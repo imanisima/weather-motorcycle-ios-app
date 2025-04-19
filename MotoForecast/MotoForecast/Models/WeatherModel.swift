@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 struct WeatherData: Codable, Identifiable {
     var id: UUID
@@ -102,6 +103,23 @@ struct WeatherData: Codable, Identifiable {
             return .unsafe
         }
     }
+    
+    var visibilityCondition: VisibilityCondition {
+        guard let visibility = visibility else { return .unknown }
+        
+        switch visibility {
+        case _ where visibility >= 10:
+            return .excellent
+        case 7..<10:
+            return .good
+        case 4..<7:
+            return .moderate
+        case 1..<4:
+            return .poor
+        default:
+            return .hazardous
+        }
+    }
 }
 
 enum RidingCondition: String {
@@ -114,6 +132,49 @@ enum RidingCondition: String {
         case .good: return "green"
         case .moderate: return "yellow"
         case .unsafe: return "red"
+        }
+    }
+}
+
+enum VisibilityCondition: String {
+    case excellent = "Excellent"
+    case good = "Good"
+    case moderate = "Moderate"
+    case poor = "Poor"
+    case hazardous = "Hazardous"
+    case unknown = "Unknown"
+    
+    var color: Color {
+        switch self {
+        case .excellent:
+            return Theme.Colors.goodRiding
+        case .good:
+            return .green
+        case .moderate:
+            return Theme.Colors.moderateRiding
+        case .poor:
+            return .orange
+        case .hazardous:
+            return Theme.Colors.unsafeRiding
+        case .unknown:
+            return .gray
+        }
+    }
+    
+    var description: String {
+        switch self {
+        case .excellent:
+            return "Perfect visibility for riding"
+        case .good:
+            return "Clear visibility"
+        case .moderate:
+            return "Moderate visibility - Exercise caution"
+        case .poor:
+            return "Poor visibility - Increased risk"
+        case .hazardous:
+            return "Hazardous conditions - Not recommended"
+        case .unknown:
+            return "Visibility data unavailable"
         }
     }
 }

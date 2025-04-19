@@ -137,8 +137,9 @@ struct WeatherView: View {
                         WeatherInfoRow(
                             icon: "eye",
                             title: "Visibility",
-                            value: "\(Int(round(visibility))) \(viewModel.useMetricSystem ? "km" : "mi")"
+                            value: weather.visibilityCondition.rawValue
                         )
+                        .foregroundColor(weather.visibilityCondition.color)
                     }
                     
                     if weather.precipitation > 0 {
