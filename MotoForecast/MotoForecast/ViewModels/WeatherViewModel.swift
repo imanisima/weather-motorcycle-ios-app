@@ -98,7 +98,10 @@ class WeatherViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         
-        await weatherService.fetchWeather(for: location, units: useCelsius ? "metric" : "imperial")
+        // Use the appropriate units based on user preference
+        let units = useCelsius ? "metric" : "imperial"
+        
+        await weatherService.fetchWeather(for: location, units: units)
         
         // Update published properties
         currentWeather = weatherService.currentWeather
@@ -191,15 +194,10 @@ class WeatherViewModel: ObservableObject {
         return gear
     }
     
-    // Helper function to convert temperature
+    // Helper function to format temperature
     func formatTemperature(_ temp: Double) -> String {
-        let value = useCelsius ? temp : celsiusToFahrenheit(temp)
-        return "\(Int(round(value)))"
-    }
-    
-    // Helper function to convert Celsius to Fahrenheit
-    private func celsiusToFahrenheit(_ celsius: Double) -> Double {
-        return celsius * 9/5 + 32
+        // No conversion needed since we're getting the right units from the API
+        return "\(Int(round(temp)))"
     }
     
     // Helper function to format wind speed

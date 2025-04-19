@@ -1,7 +1,8 @@
 import Foundation
 import CoreLocation
 
-class WeatherService: ObservableObject {
+@MainActor
+final class WeatherService: ObservableObject {
     private let apiKey = APIConfig.openWeatherAPIKey
     private let baseURL = APIConfig.openWeatherBaseURL
     private let geocoder = CLGeocoder()
@@ -46,7 +47,9 @@ class WeatherService: ObservableObject {
         self.useMetricSystem = userDefaults.bool(forKey: "useMetricSystem")
         self.use24HourFormat = userDefaults.bool(forKey: "use24HourFormat")
         loadRecentLocations()
-        loadLastViewedLocation()
+        if let lastLocation = loadLastViewedLocation() {
+            self.selectedLocation = lastLocation
+        }
         
         Task {
             await validateEnvironment()
@@ -100,15 +103,11 @@ class WeatherService: ObservableObject {
     private func validateEnvironment() async {
         do {
             try await EnvironmentValidator.validateEnvironment()
-            DispatchQueue.main.async {
-                self.isEnvironmentValid = true
-                self.error = nil
-            }
+            isEnvironmentValid = true
+            error = nil
         } catch {
-            DispatchQueue.main.async {
-                self.isEnvironmentValid = false
-                self.error = error
-            }
+            isEnvironmentValid = false
+            self.error = error
         }
     }
     
@@ -160,10 +159,8 @@ class WeatherService: ObservableObject {
                     timestamp: Date()
                 )
                 
-                DispatchQueue.main.async {
-                    self.currentWeather = weatherData
-                    self.error = nil
-                }
+                currentWeather = weatherData
+                error = nil
                 
             case 401:
                 throw EnvironmentError.invalidAPIKey
@@ -173,9 +170,7 @@ class WeatherService: ObservableObject {
                 throw EnvironmentError.networkError(NSError(domain: "WeatherService", code: httpResponse.statusCode))
             }
         } catch {
-            DispatchQueue.main.async {
-                self.error = error
-            }
+            self.error = error
         }
     }
     
@@ -208,9 +203,7 @@ class WeatherService: ObservableObject {
                 )
             }
             
-            DispatchQueue.main.async {
-                self.hourlyForecast = hourlyForecasts
-            }
+            hourlyForecast = hourlyForecasts
         } catch {
             print("Error fetching hourly forecast: \(error)")
         }
@@ -224,9 +217,7 @@ class WeatherService: ObservableObject {
         
         guard let url = URL(string: urlString) else {
             print("Invalid URL for daily forecast")
-            DispatchQueue.main.async {
-                self.error = LocationSearchError.invalidResponse
-            }
+            error = LocationSearchError.invalidResponse
             return
         }
         
@@ -249,11 +240,8 @@ class WeatherService: ObservableObject {
                 
                 // Process daily forecasts (group by day and get min/max temps)
                 let dailyForecasts = processDailyForecasts(from: forecastResponse.list)
-                
-                DispatchQueue.main.async {
-                    self.dailyForecast = dailyForecasts
-                    self.error = nil
-                }
+                dailyForecast = dailyForecasts
+                error = nil
                 
             case 401:
                 throw EnvironmentError.invalidAPIKey
@@ -264,9 +252,7 @@ class WeatherService: ObservableObject {
             }
         } catch {
             print("Error fetching daily forecast: \(error)")
-            DispatchQueue.main.async {
-                self.error = error
-            }
+            self.error = error
         }
     }
     
@@ -324,7 +310,12 @@ class WeatherService: ObservableObject {
         
         // Create a new search task
         return await withCheckedContinuation { continuation in
-            searchTask = Task {
+            searchTask = Task { [weak self] in
+                guard let self = self else {
+                    continuation.resume(returning: ([], nil))
+                    return
+                }
+                
                 // Add a small delay to allow for more typing
                 try? await Task.sleep(for: .milliseconds(300))
                 
@@ -335,7 +326,7 @@ class WeatherService: ObservableObject {
                 }
                 
                 // Perform geocoding
-                geocoder.geocodeAddressString(query) { placemarks, error in
+                self.geocoder.geocodeAddressString(query) { placemarks, error in
                     if let error = error {
                         // Only return network error if it's not a cancellation
                         if (error as NSError).domain != kCLErrorDomain {
@@ -366,7 +357,9 @@ class WeatherService: ObservableObject {
                     }
                     
                     // Cache the results
-                    self.locationCache[query] = locations
+                    Task { @MainActor in
+                        self.locationCache[query] = locations
+                    }
                     
                     continuation.resume(returning: (locations, nil))
                 }
