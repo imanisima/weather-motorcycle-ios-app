@@ -80,9 +80,15 @@ struct WeatherData: Codable, Identifiable {
             score -= 15
         }
         
-        // Precipitation impact
-        if precipitation > 0 {
-            score -= 40
+        // Precipitation impact - more granular
+        if precipitation >= 70 {
+            score -= 40  // High chance of rain
+        } else if precipitation >= 50 {
+            score -= 30  // Moderate to high chance
+        } else if precipitation >= 30 {
+            score -= 20  // Moderate chance
+        } else if precipitation >= 10 {
+            score -= 10  // Low chance
         }
         
         // Visibility impact (threshold: 5km)
@@ -141,11 +147,15 @@ struct WeatherData: Codable, Identifiable {
             conditions.append("Poor visibility")
         }
         
-        // Add precipitation context
-        if precipitation > 50 {
-            conditions.append("Heavy rain likely")
-        } else if precipitation > 30 {
+        // Add precipitation context - more detailed
+        if precipitation >= 70 {
+            conditions.append("Heavy rain very likely")
+        } else if precipitation >= 50 {
+            conditions.append("Rain likely")
+        } else if precipitation >= 30 {
             conditions.append("Rain possible")
+        } else if precipitation >= 10 {
+            conditions.append("Slight chance of rain")
         }
         
         return conditions.joined(separator: ", ")
@@ -153,9 +163,9 @@ struct WeatherData: Codable, Identifiable {
     
     var ridingCondition: RidingCondition {
         switch ridingConfidence {
-        case 80...100:
+        case 70...100:
             return .good
-        case 50..<80:
+        case 40..<70:
             return .moderate
         default:
             return .unsafe
