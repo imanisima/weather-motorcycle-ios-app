@@ -9,6 +9,11 @@ import SwiftUI
 
 @main
 struct MotoForecastApp: App {
+    init() {
+        // Print environment status on launch
+        EnvironmentValidator.printEnvironmentStatus()
+    }
+    
     var body: some Scene {
         WindowGroup {
             ContentView()
