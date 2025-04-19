@@ -35,24 +35,26 @@ struct DailyForecastDetailView: View {
                         .foregroundColor(.white)
                     
                     if let high = forecast.highTemp, let low = forecast.lowTemp {
-                        HStack(spacing: 20) {
-                            VStack {
+                        VStack(spacing: 20) {
+                            VStack(spacing: 8) {
+                                Text("\(viewModel.formatTemperature(high))")
+                                    .font(Theme.Typography.title2)
+                                    .foregroundColor(.white)
                                 Text("High")
                                     .font(Theme.Typography.caption)
                                     .foregroundColor(.white.opacity(0.8))
-                                Text("\(viewModel.formatTemperature(high))°")
-                                    .font(Theme.Typography.title2)
-                                    .foregroundColor(.white)
                             }
                             
-                            VStack {
+                            VStack(spacing: 8) {
+                                Text("\(viewModel.formatTemperature(low))")
+                                    .font(Theme.Typography.title2)
+                                    .foregroundColor(.white)
                                 Text("Low")
                                     .font(Theme.Typography.caption)
                                     .foregroundColor(.white.opacity(0.8))
-                                Text("\(viewModel.formatTemperature(low))°")
-                                    .font(Theme.Typography.title2)
-                                    .foregroundColor(.white)
                             }
+                            
+                            TemperatureUnitToggle(viewModel: viewModel, fontSize: 20)
                         }
                     }
                 }

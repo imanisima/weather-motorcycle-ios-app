@@ -98,8 +98,8 @@ class WeatherViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         
-        // Use the appropriate units based on user preference
-        let units = useCelsius ? "metric" : "imperial"
+        // Always fetch in metric units for consistency
+        let units = "metric"
         
         await weatherService.fetchWeather(for: location, units: units)
         
@@ -196,18 +196,29 @@ class WeatherViewModel: ObservableObject {
     
     // Helper function to format temperature
     func formatTemperature(_ temp: Double) -> String {
-        // No conversion needed since we're getting the right units from the API
-        return "\(Int(round(temp)))"
+        let convertedTemp = if !useCelsius {
+            // Convert from Celsius to Fahrenheit
+            temp * 9/5 + 32
+        } else {
+            // Keep as Celsius
+            temp
+        }
+        return "\(Int(round(convertedTemp)))"
+    }
+    
+    func toggleTemperatureUnit() {
+        useCelsius.toggle()
     }
     
     // Helper function to format wind speed
     func formatWindSpeed(_ speed: Double) -> String {
-        if useMetricSystem {
-            return "\(Int(round(speed))) km/h"
+        let windSpeed = if useMetricSystem {
+            // Input is in m/s, convert to km/h
+            speed * 3.6
         } else {
-            // Convert from m/s to mph
-            let mph = speed * 2.237
-            return "\(Int(round(mph))) mph"
+            // Input is in m/s, convert to mph
+            speed * 2.237
         }
+        return "\(Int(round(windSpeed))) \(useMetricSystem ? "km/h" : "mph")"
     }
 } 

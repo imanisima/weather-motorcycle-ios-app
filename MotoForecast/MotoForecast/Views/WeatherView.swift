@@ -91,10 +91,7 @@ struct WeatherView: View {
                         .font(Theme.Typography.temperature)
                         .foregroundColor(.white)
                     
-                    Text("°\(viewModel.useCelsius ? "C" : "F")")
-                        .font(Theme.Typography.title)
-                        .foregroundColor(.white)
-                        .offset(x: -10, y: 10)
+                    TemperatureUnitToggle(viewModel: viewModel, fontSize: 24)
                 }
                 
                 Spacer()
@@ -118,7 +115,7 @@ struct WeatherView: View {
                     WeatherInfoRow(
                         icon: "thermometer",
                         title: "Feels Like",
-                        value: "\(viewModel.formatTemperature(weather.feelsLike))°\(viewModel.useCelsius ? "C" : "F")"
+                        value: "\(viewModel.formatTemperature(weather.feelsLike))°"
                     )
                     
                     WeatherInfoRow(

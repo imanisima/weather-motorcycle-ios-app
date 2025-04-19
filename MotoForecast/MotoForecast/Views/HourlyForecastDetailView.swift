@@ -34,9 +34,13 @@ struct HourlyForecastDetailView: View {
                         .font(Theme.Typography.title3)
                         .foregroundColor(.white)
                     
-                    Text("\(viewModel.formatTemperature(forecast.temperature))°")
-                        .font(.system(size: 48, weight: .thin))
-                        .foregroundColor(.white)
+                    VStack(spacing: 8) {
+                        Text("\(viewModel.formatTemperature(forecast.temperature))")
+                            .font(.system(size: 48, weight: .thin))
+                            .foregroundColor(.white)
+                        
+                        TemperatureUnitToggle(viewModel: viewModel, fontSize: 20)
+                    }
                 }
                 
                 // Detailed metrics
