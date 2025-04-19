@@ -8,265 +8,281 @@ struct WeatherView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                // Background color
-                Color(red: 0.25, green: 0.3, blue: 0.5)
-                    .ignoresSafeArea()
+                // Dynamic weather background
+                if let currentWeather = weatherService.currentWeather {
+                    WeatherBackgroundView(
+                        weatherIcon: currentWeather.icon,
+                        isDaytime: currentWeather.icon.hasSuffix("d")
+                    )
+                } else {
+                    Theme.Colors.asphalt.ignoresSafeArea()
+                }
                 
                 ScrollView {
-                    VStack(spacing: 24) {
+                    VStack(spacing: Theme.Layout.cardSpacing) {
+                        // Location header
+                        if let location = weatherService.selectedLocation {
+                            locationHeader(location)
+                        }
+                        
                         // Current weather section
-                        if let currentWeather = weatherService.currentWeather,
-                           let location = weatherService.selectedLocation {
-                            VStack(spacing: 16) {
-                                // Back button and settings
-                                HStack {
-                                    Button(action: { showingLocationSearch = true }) {
-                                        Image(systemName: "chevron.left")
-                                            .foregroundColor(.white)
-                                            .imageScale(.large)
-                                    }
-                                    
-                                    Spacer()
-                                    
-                                    Button(action: { showingSettings = true }) {
-                                        Image(systemName: "gear")
-                                            .foregroundColor(.white)
-                                            .imageScale(.large)
-                                    }
-                                }
-                                
-                                Text(location.city)
-                                    .font(.largeTitle)
-                                    .foregroundColor(.white)
-                                
-                                Text(currentWeather.description.capitalized)
-                                    .font(.title2)
-                                    .foregroundColor(.white)
-                                
-                                // Large temperature display
-                                HStack(alignment: .top, spacing: 0) {
-                                    Text("\(Int(round(currentWeather.temperature)))")
-                                        .font(.system(size: 96, weight: .thin))
-                                    Text("°")
-                                        .font(.system(size: 60, weight: .thin))
-                                        .padding(.top, 8)
-                                }
-                                .foregroundColor(.white)
-                                .onTapGesture {
-                                    weatherService.useMetricSystem.toggle()
-                                }
-                                
-                                // Feels like temperature
-                                Text("Feels like \(Int(round(currentWeather.feelsLike)))°")
-                                    .foregroundColor(.white)
-                                    .font(.title3)
-                                
-                                // High and low temperatures
-                                if let highTemp = currentWeather.highTemp,
-                                   let lowTemp = currentWeather.lowTemp {
-                                    Text("High \(Int(round(highTemp)))° • Low \(Int(round(lowTemp)))°")
-                                        .foregroundColor(.white)
-                                        .font(.title3)
-                                }
-                            }
-                            .padding(.top)
-                        }
-                        
-                        // Hourly forecast card
-                        if !weatherService.hourlyForecast.isEmpty {
-                            VStack(alignment: .leading, spacing: 16) {
-                                HStack {
-                                    Image(systemName: "clock")
-                                        .foregroundColor(.white)
-                                    Text("Hourly forecast")
-                                        .foregroundColor(.white)
-                                        .font(.headline)
-                                }
-                                
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 20) {
-                                        ForEach(weatherService.hourlyForecast) { forecast in
-                                            VStack(spacing: 8) {
-                                                Text(formatHourlyTime(forecast.timestamp))
-                                                    .foregroundColor(.white)
-                                                Image(systemName: getWeatherIcon(forecast.description))
-                                                    .foregroundColor(.white)
-                                                Text("\(Int(round(forecast.temperature)))°")
-                                                    .foregroundColor(.white)
-                                                if forecast.precipitation > 0 {
-                                                    Text("\(Int(forecast.precipitation))%")
-                                                        .foregroundColor(.blue)
-                                                        .font(.caption)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            .padding()
-                            .background(Color.black.opacity(0.3))
-                            .cornerRadius(16)
-                            .padding(.horizontal)
-                        }
-                        
-                        // 10-day forecast card
-                        if !weatherService.dailyForecast.isEmpty {
-                            VStack(alignment: .leading, spacing: 16) {
-                                HStack {
-                                    Image(systemName: "calendar")
-                                        .foregroundColor(.white)
-                                    Text("10-day forecast")
-                                        .foregroundColor(.white)
-                                        .font(.headline)
-                                }
-                                
-                                VStack(spacing: 12) {
-                                    ForEach(weatherService.dailyForecast) { forecast in
-                                        HStack {
-                                            Text(formatDayOfWeek(forecast.timestamp))
-                                                .frame(width: 100, alignment: .leading)
-                                            
-                                            Image(systemName: getWeatherIcon(forecast.description))
-                                            
-                                            if forecast.precipitation > 0 {
-                                                Text("\(Int(forecast.precipitation))%")
-                                                    .foregroundColor(.blue)
-                                                    .frame(width: 50)
-                                            } else {
-                                                Spacer()
-                                                    .frame(width: 50)
-                                            }
-                                            
-                                            Spacer()
-                                            
-                                            if let lowTemp = forecast.lowTemp,
-                                               let highTemp = forecast.highTemp {
-                                                Text("\(Int(round(lowTemp)))°")
-                                                    .foregroundColor(.white.opacity(0.7))
-                                                Text("\(Int(round(highTemp)))°")
-                                                    .foregroundColor(.white)
-                                            }
-                                        }
-                                        .foregroundColor(.white)
-                                    }
-                                }
-                            }
-                            .padding()
-                            .background(Color.black.opacity(0.3))
-                            .cornerRadius(16)
-                            .padding(.horizontal)
-                        }
-                        
-                        // Additional info cards
                         if let currentWeather = weatherService.currentWeather {
-                            LazyVGrid(columns: [
-                                GridItem(.flexible()),
-                                GridItem(.flexible())
-                            ], spacing: 16) {
-                                InfoCard(title: "Wind", icon: "wind") {
-                                    Text(formatWindSpeed(currentWeather.windSpeed))
-                                }
-                                
-                                InfoCard(title: "Riding Confidence", icon: "bicycle") {
-                                    VStack {
-                                        Text("\(currentWeather.ridingConfidence)%")
-                                            .foregroundColor(getRidingConfidenceColor(currentWeather.ridingConfidence))
-                                        Text(currentWeather.ridingCondition.rawValue)
-                                            .font(.caption)
-                                    }
-                                }
-                            }
-                            .padding(.horizontal)
+                            currentWeatherSection(currentWeather)
                         }
                         
-                        // Attribution footer
-                        Text("Data provided by OpenWeather")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.7))
-                            .padding(.top, 8)
-                            .padding(.bottom, 40)
+                        // Riding advice
+                        if let currentWeather = weatherService.currentWeather {
+                            ridingAdviceSection(currentWeather)
+                        }
+                        
+                        // Hourly forecast
+                        if !weatherService.hourlyForecast.isEmpty {
+                            hourlyForecastSection
+                        }
+                        
+                        // Daily forecast
+                        if !weatherService.dailyForecast.isEmpty {
+                            dailyForecastSection
+                        }
                     }
+                    .padding(Theme.Layout.screenPadding)
                 }
             }
             .navigationBarHidden(true)
-            .sheet(isPresented: $showingSettings) {
-                SettingsView(weatherService: weatherService)
-            }
             .sheet(isPresented: $showingLocationSearch) {
                 LocationSearchView(weatherService: weatherService)
             }
+            .sheet(isPresented: $showingSettings) {
+                SettingsView(weatherService: weatherService)
+            }
         }
     }
     
-    private func formatHourlyTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = weatherService.use24HourFormat ? "HH:00" : "ha"
-        return formatter.string(from: date)
-    }
-    
-    private func formatDayOfWeek(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEE"
-        return formatter.string(from: date)
-    }
-    
-    private func formatWindSpeed(_ speed: Double) -> String {
-        let unit = weatherService.useMetricSystem ? "km/h" : "mph"
-        let convertedSpeed = weatherService.useMetricSystem ? speed * 3.6 : speed * 2.237
-        return "\(Int(round(convertedSpeed))) \(unit)"
-    }
-    
-    private func getWeatherIcon(_ description: String) -> String {
-        switch description.lowercased() {
-        case let desc where desc.contains("thunder"):
-            return "cloud.bolt.fill"
-        case let desc where desc.contains("rain"):
-            return "cloud.rain.fill"
-        case let desc where desc.contains("snow"):
-            return "cloud.snow.fill"
-        case let desc where desc.contains("cloud"):
-            return "cloud.fill"
-        case let desc where desc.contains("clear"):
-            return Calendar.current.component(.hour, from: Date()) >= 18 ? "moon.fill" : "sun.max.fill"
-        default:
-            return "cloud.fill"
-        }
-    }
-    
-    private func getRidingConfidenceColor(_ confidence: Int) -> Color {
-        switch confidence {
-        case 80...100:
-            return .green
-        case 50..<80:
-            return .yellow
-        default:
-            return .red
-        }
-    }
-}
-
-struct InfoCard<Content: View>: View {
-    let title: String
-    let icon: String
-    let content: () -> Content
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: icon)
-                    .foregroundColor(.white)
-                Text(title)
-                    .foregroundColor(.white)
-                    .font(.headline)
+    private func locationHeader(_ location: Location) -> some View {
+        HStack {
+            Button(action: { showingLocationSearch = true }) {
+                HStack {
+                    Image(systemName: "location.fill")
+                        .foregroundColor(Theme.Colors.accent)
+                    
+                    Text(location.city)
+                        .font(Theme.Typography.title2)
+                        .foregroundColor(.white)
+                }
             }
             
-            content()
-                .foregroundColor(.white)
+            Spacer()
+            
+            Button(action: { showingSettings = true }) {
+                Image(systemName: "gear")
+                    .font(.system(size: Theme.Layout.iconSize))
+                    .foregroundColor(.white)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(Color.black.opacity(0.3))
-        .cornerRadius(16)
+        .padding(.vertical, 8)
+    }
+    
+    private func currentWeatherSection(_ weather: WeatherData) -> some View {
+        VStack(spacing: 16) {
+            // Temperature and icon
+            HStack(alignment: .top) {
+                VStack(alignment: .leading) {
+                    Text("\(Int(round(weather.temperature)))")
+                        .font(Theme.Typography.temperature)
+                        .foregroundColor(.white)
+                    
+                    Text("°\(weatherService.useMetricSystem ? "C" : "F")")
+                        .font(Theme.Typography.title)
+                        .foregroundColor(.white)
+                        .offset(x: -10, y: 10)
+                }
+                
+                Spacer()
+                
+                WeatherIconWithCondition(
+                    iconCode: weather.icon,
+                    condition: weather.ridingCondition,
+                    size: 120
+                )
+            }
+            
+            // Weather description
+            Text(weather.description.capitalized)
+                .font(Theme.Typography.title3)
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity, alignment: .center)
+            
+            // Weather details
+            WeatherCard(title: "Current Conditions") {
+                VStack(spacing: 16) {
+                    WeatherInfoRow(
+                        icon: "thermometer",
+                        title: "Feels Like",
+                        value: "\(Int(round(weather.feelsLike)))°\(weatherService.useMetricSystem ? "C" : "F")"
+                    )
+                    
+                    WeatherInfoRow(
+                        icon: "wind",
+                        title: "Wind Speed",
+                        value: "\(Int(round(weather.windSpeed))) \(weatherService.useMetricSystem ? "m/s" : "mph")"
+                    )
+                    
+                    WeatherInfoRow(
+                        icon: "humidity",
+                        title: "Humidity",
+                        value: "\(weather.humidity)%"
+                    )
+                    
+                    if let visibility = weather.visibility {
+                        WeatherInfoRow(
+                            icon: "eye",
+                            title: "Visibility",
+                            value: "\(Int(round(visibility))) \(weatherService.useMetricSystem ? "km" : "mi")"
+                        )
+                    }
+                    
+                    if weather.precipitation > 0 {
+                        WeatherInfoRow(
+                            icon: "drop.fill",
+                            title: "Precipitation",
+                            value: "\(Int(round(weather.precipitation)))%"
+                        )
+                    }
+                }
+            }
+        }
+    }
+    
+    private var hourlyForecastSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Hourly Forecast")
+                .font(Theme.Typography.title3)
+                .foregroundColor(.white)
+                .padding(.leading, 4)
+            
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 16) {
+                    ForEach(weatherService.hourlyForecast) { forecast in
+                        VStack(spacing: 8) {
+                            // Time
+                            Text(formatHour(forecast.timestamp))
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(.white)
+                            
+                            // Weather icon
+                            WeatherIcon(iconCode: forecast.icon, size: 40)
+                            
+                            // Temperature
+                            Text("\(Int(round(forecast.temperature)))°")
+                                .font(Theme.Typography.body)
+                                .foregroundColor(.white)
+                            
+                            // Riding condition indicator
+                            Circle()
+                                .fill(colorForCondition(forecast.ridingCondition))
+                                .frame(width: 8, height: 8)
+                        }
+                        .frame(width: 60)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Theme.Colors.asphalt.opacity(0.5))
+                        )
+                    }
+                }
+                .padding(.horizontal, 4)
+            }
+        }
+    }
+    
+    private var dailyForecastSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("5-Day Forecast")
+                .font(Theme.Typography.title3)
+                .foregroundColor(.white)
+                .padding(.leading, 4)
+            
+            VStack(spacing: 12) {
+                ForEach(weatherService.dailyForecast) { forecast in
+                    HStack {
+                        // Day of week
+                        Text(formatDay(forecast.timestamp))
+                            .font(Theme.Typography.body)
+                            .foregroundColor(.white)
+                            .frame(width: 100, alignment: .leading)
+                        
+                        // Weather icon
+                        WeatherIcon(iconCode: forecast.icon, size: 30)
+                        
+                        // Temperature range
+                        if let high = forecast.highTemp, let low = forecast.lowTemp {
+                            Text("\(Int(round(low)))° - \(Int(round(high)))°")
+                                .font(Theme.Typography.body)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                        }
+                        
+                        // Riding condition indicator
+                        Circle()
+                            .fill(colorForCondition(forecast.ridingCondition))
+                            .frame(width: 8, height: 8)
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Theme.Colors.asphalt.opacity(0.5))
+                    )
+                }
+            }
+        }
+    }
+    
+    private func ridingAdviceSection(_ weather: WeatherData) -> some View {
+        WeatherCard(title: "Riding Conditions") {
+            VStack(spacing: 16) {
+                RidingConditionIndicator(condition: weather.ridingCondition)
+                
+                Text(ridingAdvice(for: weather))
+                    .font(Theme.Typography.body)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+            }
+        }
+    }
+    
+    private func formatHour(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = weatherService.use24HourFormat ? "HH:mm" : "h a"
+        return formatter.string(from: date)
+    }
+    
+    private func formatDay(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE"
+        return formatter.string(from: date)
+    }
+    
+    private func colorForCondition(_ condition: RidingCondition) -> Color {
+        switch condition {
+        case .good:
+            return Theme.Colors.goodRiding
+        case .moderate:
+            return Theme.Colors.moderateRiding
+        case .unsafe:
+            return Theme.Colors.unsafeRiding
+        }
+    }
+    
+    private func ridingAdvice(for weather: WeatherData) -> String {
+        switch weather.ridingCondition {
+        case .good:
+            return "Perfect conditions for riding! Enjoy the open road."
+        case .moderate:
+            return "Conditions are acceptable but be cautious. Watch for changing weather."
+        case .unsafe:
+            return "Not recommended for riding. Consider alternative transportation."
+        }
     }
 }
 

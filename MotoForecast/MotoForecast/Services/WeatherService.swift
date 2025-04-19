@@ -29,7 +29,7 @@ class WeatherService: ObservableObject {
     private let recentLocationsKey = "recentLocations"
     private let lastViewedLocationKey = "lastViewedLocation"
     private let maxRecentLocations = 5
-    private var searchTask: Task<Void, Never>?
+    public var searchTask: Task<Void, Never>?
     private var locationCache: [String: [Location]] = [:]
     
     @Published var currentWeather: WeatherData?
