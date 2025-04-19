@@ -93,6 +93,64 @@ struct WeatherData: Codable, Identifiable {
         return max(0, min(100, score))
     }
     
+    var rideRating: RideRating {
+        switch ridingConfidence {
+        case 90...100:
+            return .excellent
+        case 75..<90:
+            return .good
+        case 60..<75:
+            return .moderate
+        case 40..<60:
+            return .fair
+        case 20..<40:
+            return .poor
+        default:
+            return .unsafe
+        }
+    }
+    
+    var weatherSummary: String {
+        var conditions: [String] = []
+        
+        // Add weather description
+        conditions.append(description.capitalized)
+        
+        // Add temperature context
+        if let high = highTemp, let low = lowTemp {
+            if high > 30 {
+                conditions.append("Hot")
+            } else if high < 15 {
+                conditions.append("Cool")
+            } else {
+                conditions.append("Mild")
+            }
+        }
+        
+        // Add wind context
+        if windSpeed > 30 {
+            conditions.append("Strong winds")
+        } else if windSpeed > 20 {
+            conditions.append("Moderate winds")
+        } else {
+            conditions.append("Light winds")
+        }
+        
+        // Add visibility context if poor
+        if let visibility = visibility, visibility < 5 {
+            conditions.append("Poor visibility")
+        }
+        
+        // Add precipitation context
+        if precipitation > 50 {
+            conditions.append("Heavy rain likely")
+        } else if precipitation > 30 {
+            conditions.append("Rain possible")
+        }
+        
+        return conditions.joined(separator: ", ")
+    }
+    
     var ridingCondition: RidingCondition {
         switch ridingConfidence {
         case 80...100:
@@ -118,6 +176,66 @@ struct WeatherData: Codable, Identifiable {
             return .poor
         default:
             return .hazardous
+        }
+    }
+}
+
+enum RideRating: String {
+    case excellent = "Excellent!"
+    case good = "Good"
+    case moderate = "Moderate"
+    case fair = "Fair"
+    case poor = "Poor"
+    case unsafe = "Not Recommended"
+    
+    var color: Color {
+        switch self {
+        case .excellent:
+            return .green
+        case .good:
+            return Theme.Colors.goodRiding
+        case .moderate:
+            return Theme.Colors.moderateRiding
+        case .fair:
+            return .yellow
+        case .poor:
+            return .orange
+        case .unsafe:
+            return Theme.Colors.unsafeRiding
+        }
+    }
+    
+    var icon: String {
+        switch self {
+        case .excellent:
+            return "star.fill"
+        case .good:
+            return "checkmark.circle.fill"
+        case .moderate:
+            return "exclamationmark.triangle.fill"
+        case .fair:
+            return "exclamationmark.circle.fill"
+        case .poor:
+            return "xmark.circle.fill"
+        case .unsafe:
+            return "xmark.octagon.fill"
+        }
+    }
+    
+    var description: String {
+        switch self {
+        case .excellent:
+            return "Perfect conditions for riding!"
+        case .good:
+            return "Great day for a ride"
+        case .moderate:
+            return "Decent riding conditions"
+        case .fair:
+            return "Exercise caution"
+        case .poor:
+            return "Consider postponing"
+        case .unsafe:
+            return "Not recommended for riding"
         }
     }
 }

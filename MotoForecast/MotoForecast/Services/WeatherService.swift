@@ -264,24 +264,27 @@ final class WeatherService: ObservableObject {
         
         // Create daily forecasts from grouped data
         let dailyForecasts = groupedForecasts.map { (date, forecasts) -> WeatherData in
+            // Calculate true daily high and low temperatures
             let temps = forecasts.map { $0.main.temp }
             let maxTemp = temps.max() ?? forecasts[0].main.temp
             let minTemp = temps.min() ?? forecasts[0].main.temp
-            let dayForecast = forecasts.first(where: { 
+            
+            // Get mid-day forecast for the main temperature
+            let midDayForecast = forecasts.first(where: { 
                 Calendar.current.component(.hour, from: $0.dt) >= 12 &&
                 Calendar.current.component(.hour, from: $0.dt) <= 15
             }) ?? forecasts[0]
             
             return WeatherData(
                 id: UUID(),
-                temperature: dayForecast.main.temp,
-                feelsLike: dayForecast.main.feelsLike,
-                humidity: dayForecast.main.humidity,
-                windSpeed: dayForecast.wind.speed,
-                precipitation: dayForecast.pop * 100,
-                visibility: Double(dayForecast.visibility) / 1000,
-                description: dayForecast.weather.first?.description ?? "",
-                icon: dayForecast.weather.first?.icon ?? "",
+                temperature: midDayForecast.main.temp,
+                feelsLike: midDayForecast.main.feelsLike,
+                humidity: midDayForecast.main.humidity,
+                windSpeed: midDayForecast.wind.speed,
+                precipitation: midDayForecast.pop * 100,
+                visibility: Double(midDayForecast.visibility) / 1000,
+                description: midDayForecast.weather.first?.description ?? "",
+                icon: midDayForecast.weather.first?.icon ?? "",
                 timestamp: date,
                 highTemp: maxTemp,
                 lowTemp: minTemp

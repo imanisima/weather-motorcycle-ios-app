@@ -164,31 +164,33 @@ struct WeatherView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 16) {
                     ForEach(viewModel.hourlyForecast) { forecast in
-                        VStack(spacing: 8) {
-                            // Time
-                            Text(formatHour(forecast.timestamp))
-                                .font(Theme.Typography.caption)
-                                .foregroundColor(.white)
-                            
-                            // Weather icon
-                            WeatherIcon(iconCode: forecast.icon, size: 40)
-                            
-                            // Temperature
-                            Text("\(viewModel.formatTemperature(forecast.temperature))°")
-                                .font(Theme.Typography.body)
-                                .foregroundColor(.white)
-                            
-                            // Riding condition indicator
-                            Circle()
-                                .fill(colorForCondition(forecast.ridingCondition))
-                                .frame(width: 8, height: 8)
+                        NavigationLink(destination: HourlyForecastDetailView(forecast: forecast, viewModel: viewModel)) {
+                            VStack(spacing: 8) {
+                                // Time
+                                Text(formatHour(forecast.timestamp))
+                                    .font(Theme.Typography.caption)
+                                    .foregroundColor(.white)
+                                
+                                // Weather icon
+                                WeatherIcon(iconCode: forecast.icon, size: 40)
+                                
+                                // Temperature
+                                Text("\(viewModel.formatTemperature(forecast.temperature))°")
+                                    .font(Theme.Typography.body)
+                                    .foregroundColor(.white)
+                                
+                                // Riding condition indicator
+                                Circle()
+                                    .fill(colorForCondition(forecast.ridingCondition))
+                                    .frame(width: 8, height: 8)
+                            }
+                            .frame(width: 60)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Theme.Colors.asphalt.opacity(0.5))
+                            )
                         }
-                        .frame(width: 60)
-                        .padding(.vertical, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Theme.Colors.asphalt.opacity(0.5))
-                        )
                     }
                 }
                 .padding(.horizontal, 4)
@@ -203,37 +205,76 @@ struct WeatherView: View {
                 .foregroundColor(.white)
                 .padding(.leading, 4)
             
+            let bestDay = viewModel.dailyForecast.max(by: { $0.ridingConfidence < $1.ridingConfidence })
+            
             VStack(spacing: 12) {
                 ForEach(viewModel.dailyForecast) { forecast in
-                    HStack {
-                        // Day of week
-                        Text(formatDay(forecast.timestamp))
-                            .font(Theme.Typography.body)
-                            .foregroundColor(.white)
-                            .frame(width: 100, alignment: .leading)
-                        
-                        // Weather icon
-                        WeatherIcon(iconCode: forecast.icon, size: 30)
-                        
-                        // Temperature range
-                        if let high = forecast.highTemp, let low = forecast.lowTemp {
-                            Text("\(viewModel.formatTemperature(low))° - \(viewModel.formatTemperature(high))°")
-                                .font(Theme.Typography.body)
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity, alignment: .trailing)
+                    NavigationLink(destination: DailyForecastDetailView(forecast: forecast, viewModel: viewModel)) {
+                        VStack(spacing: 8) {
+                            HStack {
+                                // Day of week
+                                Text(formatDay(forecast.timestamp))
+                                    .font(Theme.Typography.body)
+                                    .foregroundColor(.white)
+                                    .frame(width: 100, alignment: .leading)
+                                
+                                // Weather icon and temperature range
+                                HStack(spacing: 12) {
+                                    WeatherIcon(iconCode: forecast.icon, size: 30)
+                                    
+                                    if let high = forecast.highTemp, let low = forecast.lowTemp {
+                                        Text("H: \(viewModel.formatTemperature(high))° L: \(viewModel.formatTemperature(low))°")
+                                            .font(Theme.Typography.body)
+                                            .foregroundColor(.white)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                                
+                                // Ride rating with icon
+                                HStack(spacing: 4) {
+                                    Image(systemName: forecast.rideRating.icon)
+                                        .foregroundColor(forecast.rideRating.color)
+                                    Text(forecast.rideRating.rawValue)
+                                        .font(Theme.Typography.caption)
+                                        .foregroundColor(forecast.rideRating.color)
+                                }
+                                .frame(width: 120, alignment: .trailing)
+                            }
+                            
+                            // Weather summary
+                            Text(forecast.weatherSummary)
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(.white.opacity(0.8))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 4)
+                            
+                            // Best day indicator
+                            if let bestDay = bestDay, bestDay.id == forecast.id {
+                                HStack {
+                                    Image(systemName: "medal.fill")
+                                        .foregroundColor(.yellow)
+                                    Text("Best Day to Ride")
+                                        .font(Theme.Typography.caption)
+                                        .foregroundColor(.yellow)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.top, 4)
+                            }
                         }
-                        
-                        // Riding condition indicator
-                        Circle()
-                            .fill(colorForCondition(forecast.ridingCondition))
-                            .frame(width: 8, height: 8)
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Theme.Colors.asphalt.opacity(0.5))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .strokeBorder(
+                                            bestDay?.id == forecast.id ? Color.yellow : Color.clear,
+                                            lineWidth: 2
+                                        )
+                                )
+                        )
                     }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Theme.Colors.asphalt.opacity(0.5))
-                    )
                 }
             }
         }
