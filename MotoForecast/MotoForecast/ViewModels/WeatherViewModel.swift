@@ -182,55 +182,33 @@ class WeatherViewModel: ObservableObject {
         var recommendations: [String] = []
         
         // Temperature recommendations
-        if weather.temperature < 5 {
-            recommendations.append("Extremely cold conditions. Consider thermal gear and heated equipment.")
+        if weather.temperature > 30 {
+            recommendations.append("High temperature alert: Stay hydrated and take frequent breaks")
         } else if weather.temperature < 10 {
-            recommendations.append("Cold conditions. Wear appropriate thermal protection.")
-        } else if weather.temperature > 35 {
-            recommendations.append("Extremely hot conditions. Stay hydrated and use ventilated gear.")
-        } else if weather.temperature > 30 {
-            recommendations.append("Hot conditions. Use well-ventilated gear and stay hydrated.")
+            recommendations.append("Low temperature alert: Wear appropriate cold weather gear")
         }
         
         // Wind recommendations
-        if weather.windSpeed > 15 {
-            recommendations.append("Dangerous wind conditions. Consider postponing your ride.")
-        } else if weather.windSpeed > 10 {
-            recommendations.append("Strong winds. Exercise extreme caution.")
-        } else if weather.windSpeed > 7 {
-            recommendations.append("Moderate winds. Be prepared for gusts.")
+        if weather.windSpeed > 20 {
+            recommendations.append("Strong winds: Be cautious of gusts and maintain a firm grip")
         }
         
         // Precipitation recommendations
-        if let precipitation = weather.precipitation, precipitation > 0 {
-            if precipitation > 50 {
-                recommendations.append("Heavy rain expected. Not recommended for riding.")
-            } else if precipitation > 30 {
-                recommendations.append("Moderate rain expected. Use rain gear if riding.")
-            } else if precipitation > 10 {
-                recommendations.append("Light rain possible. Be prepared with rain gear.")
-            }
+        if weather.precipitation > 0 {
+            recommendations.append("Rain alert: Wear waterproof gear and reduce speed")
         }
         
         // Visibility recommendations
-        if let visibility = weather.visibility {
-            if visibility < 1 {
-                recommendations.append("Very poor visibility. Riding not recommended.")
-            } else if visibility < 3 {
-                recommendations.append("Poor visibility. Use extra caution if riding.")
-            } else if visibility < 5 {
-                recommendations.append("Moderate visibility. Stay alert.")
-            }
+        if let visibility = weather.visibility, visibility < 5 {
+            recommendations.append("Poor visibility: Use high beams and maintain safe distance")
         }
         
-        // UV Index recommendations
-        if weather.uvIndex > 8 {
-            recommendations.append("Extreme UV levels. Use sun protection.")
-        } else if weather.uvIndex > 6 {
-            recommendations.append("High UV levels. Consider sun protection.")
+        // If no specific recommendations, add a default one
+        if recommendations.isEmpty {
+            recommendations.append("Good riding conditions. Remember to stay alert and enjoy your ride!")
         }
         
-        return recommendations.isEmpty ? ["Good conditions for riding."] : recommendations
+        return recommendations
     }
     
     func getGearRecommendations() -> [String] {
@@ -247,7 +225,7 @@ class WeatherViewModel: ObservableObject {
             gear.append("Insulated riding jacket")
         }
         
-        if let precipitation = weather.precipitation, precipitation > 0 {
+        if weather.precipitation > 0 {
             gear.append("Waterproof jacket and pants")
             gear.append("Waterproof boots")
         }
@@ -261,8 +239,7 @@ class WeatherViewModel: ObservableObject {
     }
     
     // Helper function to convert temperature
-    func formatTemperature(_ temp: Double?) -> String {
-        guard let temp = temp else { return "N/A" }
+    func formatTemperature(_ temp: Double) -> String {
         let value = useCelsius ? temp : celsiusToFahrenheit(temp)
         return "\(Int(round(value)))°\(useCelsius ? "C" : "F")"
     }
@@ -273,8 +250,7 @@ class WeatherViewModel: ObservableObject {
     }
     
     // Helper function to format wind speed
-    func formatWindSpeed(_ speed: Double?) -> String {
-        guard let speed = speed else { return "N/A" }
+    func formatWindSpeed(_ speed: Double) -> String {
         if useMetricSystem {
             return "\(Int(round(speed))) km/h"
         } else {

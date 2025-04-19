@@ -1,6 +1,5 @@
 import Foundation
 import CoreLocation
-import os
 
 enum LocationSearchError: LocalizedError {
     case geocodingFailed
@@ -22,7 +21,6 @@ enum LocationSearchError: LocalizedError {
     }
 }
 
-@MainActor
 class WeatherService: ObservableObject {
     private let apiKey = APIConfig.openWeatherAPIKey
     private let baseURL = APIConfig.openWeatherBaseURL
@@ -136,7 +134,6 @@ class WeatherService: ObservableObject {
         }
     }
     
-    @MainActor
     func fetchWeather(for location: Location, units: String = "metric") async {
         guard isEnvironmentValid else {
             await validateEnvironment()
@@ -145,15 +142,16 @@ class WeatherService: ObservableObject {
         
         selectedLocation = location
         
-        async let currentWeatherTask = fetchCurrentWeather(for: location, units: units)
-        async let hourlyForecastTask = fetchHourlyForecast(for: location, units: units)
-        async let dailyForecastTask = fetchDailyForecast(for: location, units: units)
+        // Fetch current weather
+        await fetchCurrentWeather(for: location, units: units)
         
-        // Wait for all tasks to complete
-        await (_, _, _) = (currentWeatherTask, hourlyForecastTask, dailyForecastTask)
+        // Fetch hourly forecast
+        await fetchHourlyForecast(for: location, units: units)
+        
+        // Fetch daily forecast
+        await fetchDailyForecast(for: location, units: units)
     }
     
-    @MainActor
     private func fetchCurrentWeather(for location: Location, units: String) async {
         let urlString = "\(baseURL)/weather?lat=\(location.latitude)&lon=\(location.longitude)&appid=\(apiKey)&units=\(units)"
         
@@ -177,16 +175,17 @@ class WeatherService: ObservableObject {
                     feelsLike: weatherResponse.main.feelsLike,
                     humidity: weatherResponse.main.humidity,
                     windSpeed: weatherResponse.wind.speed,
-                    precipitation: weatherResponse.rain?.oneHour,
-                    uvIndex: 0,
+                    precipitation: weatherResponse.rain?.oneHour ?? 0,
                     visibility: Double(weatherResponse.visibility) / 1000,
                     description: weatherResponse.weather.first?.description ?? "",
                     icon: weatherResponse.weather.first?.icon ?? "",
                     timestamp: Date()
                 )
                 
-                self.currentWeather = weatherData
-                self.error = nil
+                DispatchQueue.main.async {
+                    self.currentWeather = weatherData
+                    self.error = nil
+                }
                 
             case 401:
                 throw EnvironmentError.invalidAPIKey
@@ -196,11 +195,12 @@ class WeatherService: ObservableObject {
                 throw EnvironmentError.networkError(NSError(domain: "WeatherService", code: httpResponse.statusCode))
             }
         } catch {
-            self.error = error
+            DispatchQueue.main.async {
+                self.error = error
+            }
         }
     }
     
-    @MainActor
     private func fetchHourlyForecast(for location: Location, units: String) async {
         let urlString = "\(baseURL)/forecast?lat=\(location.latitude)&lon=\(location.longitude)&appid=\(apiKey)&units=\(units)"
         
@@ -212,202 +212,124 @@ class WeatherService: ObservableObject {
             decoder.dateDecodingStrategy = .secondsSince1970
             let forecastResponse = try decoder.decode(ForecastResponse.self, from: data)
             
-            let hourlyForecasts = processHourlyForecasts(forecastResponse.list)
-            self.hourlyForecast = hourlyForecasts
+            // Filter for next 24 hours
+            let next24Hours = forecastResponse.list.prefix(8)
+            
+            let hourlyForecasts = next24Hours.map { item in
+                WeatherData(
+                    id: UUID(),
+                    temperature: item.main.temp,
+                    feelsLike: item.main.feelsLike,
+                    humidity: item.main.humidity,
+                    windSpeed: item.wind.speed,
+                    precipitation: item.pop * 100,
+                    visibility: Double(item.visibility) / 1000,
+                    description: item.weather.first?.description ?? "",
+                    icon: item.weather.first?.icon ?? "",
+                    timestamp: item.dt
+                )
+            }
+            
+            DispatchQueue.main.async {
+                self.hourlyForecast = hourlyForecasts
+            }
         } catch {
             print("Error fetching hourly forecast: \(error)")
         }
     }
     
-    private func processHourlyForecasts(_ forecasts: [ForecastItem]) -> [WeatherData] {
-        let hourlyForecasts = forecasts.prefix(24).map { item in
-            WeatherData(
-                id: UUID(),
-                temperature: item.main.temp,
-                feelsLike: item.main.feelsLike,
-                humidity: item.main.humidity,
-                windSpeed: item.wind.speed,
-                precipitation: item.pop * 100,
-                uvIndex: estimateUVIndex(for: item.dt), // Estimate UV based on time of day
-                visibility: Double(item.visibility) / 1000,
-                description: item.weather.first?.description ?? "",
-                icon: item.weather.first?.icon ?? "",
-                timestamp: item.dt,
-                highTemp: nil,
-                lowTemp: nil
-            )
-        }
-        return hourlyForecasts
-    }
-    
-    @MainActor
     private func fetchDailyForecast(for location: Location, units: String) async {
-        let logger = Logger(subsystem: "com.motoforecast", category: "WeatherService")
-        logger.info("Fetching daily forecast for \(location.name)")
+        print("Starting daily forecast fetch for \(location.name)")
+        let urlString = "\(baseURL)/forecast?lat=\(location.latitude)&lon=\(location.longitude)&appid=\(apiKey)&units=\(units)"
         
-        // First try One Call API 3.0
-        let oneCallUrlString = "https://api.openweathermap.org/data/3.0/onecall?lat=\(location.latitude)&lon=\(location.longitude)&appid=\(apiKey)&units=\(units)&exclude=current,minutely,hourly,alerts"
+        print("Daily forecast URL: \(urlString)")
         
-        if let url = URL(string: oneCallUrlString) {
-            do {
-                let (data, response) = try await URLSession.shared.data(from: url)
-                
-                guard let httpResponse = response as? HTTPURLResponse else {
-                    throw EnvironmentError.networkError(NSError(domain: "WeatherService", code: -1))
-                }
-                
-                let decoder = JSONDecoder()
-                decoder.dateDecodingStrategy = .secondsSince1970
-                
-                if httpResponse.statusCode == 200 {
-                    let forecastResponse = try decoder.decode(OneCallResponse.self, from: data)
-                    let dailyForecasts = forecastResponse.daily.map { day in
-                        WeatherData(
-                            id: UUID(),
-                            temperature: day.temp.day,
-                            feelsLike: day.feelsLike.day,
-                            humidity: day.humidity,
-                            windSpeed: day.windSpeed,
-                            precipitation: day.pop,
-                            uvIndex: day.uvi,
-                            visibility: nil,
-                            description: day.weather.first?.description ?? "No description available",
-                            icon: day.weather.first?.icon ?? "01d",
-                            timestamp: Date(timeIntervalSince1970: TimeInterval(day.dt)),
-                            highTemp: day.temp.max,
-                            lowTemp: day.temp.min
-                        )
-                    }
-                    
-                    logger.info("Successfully fetched \(dailyForecasts.count) daily forecasts from One Call API")
-                    self.dailyForecast = dailyForecasts
-                    self.error = nil
-                    return
-                }
-                
-                // If One Call API fails, try to decode error response
-                if let errorData = try? decoder.decode(APIError.self, from: data) {
-                    logger.error("One Call API error: \(errorData.message)")
-                }
-            } catch {
-                logger.error("One Call API error: \(error.localizedDescription)")
+        guard let url = URL(string: urlString) else {
+            print("Invalid URL for daily forecast")
+            DispatchQueue.main.async {
+                self.error = LocationSearchError.invalidLocation
             }
-        }
-        
-        // Fallback to 5-day forecast API
-        logger.info("Falling back to 5-day forecast API")
-        let fiveDayUrlString = "\(baseURL)/forecast?lat=\(location.latitude)&lon=\(location.longitude)&appid=\(apiKey)&units=\(units)"
-        
-        guard let url = URL(string: fiveDayUrlString) else {
-            logger.error("Invalid URL for 5-day forecast")
-            self.error = LocationSearchError.invalidLocation
             return
         }
         
         do {
+            print("Making API request for daily forecast...")
             let (data, response) = try await URLSession.shared.data(from: url)
             
             guard let httpResponse = response as? HTTPURLResponse else {
+                print("Invalid HTTP response")
                 throw EnvironmentError.networkError(NSError(domain: "WeatherService", code: -1))
             }
             
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .secondsSince1970
+            print("Daily forecast response status: \(httpResponse.statusCode)")
             
             switch httpResponse.statusCode {
             case 200:
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .secondsSince1970
                 let forecastResponse = try decoder.decode(ForecastResponse.self, from: data)
-                let dailyForecasts = processDailyForecasts(forecastResponse.list)
                 
-                logger.info("Successfully fetched \(dailyForecasts.count) daily forecasts from 5-day forecast API")
-                self.dailyForecast = dailyForecasts
-                self.error = nil
+                // Group forecasts by day
+                let groupedForecasts = Dictionary(grouping: forecastResponse.list) {
+                    Calendar.current.startOfDay(for: $0.dt)
+                }
+                
+                // Create daily forecasts from grouped data
+                let dailyForecasts = groupedForecasts.map { (date, forecasts) -> WeatherData in
+                    let temps = forecasts.map { $0.main.temp }
+                    let maxTemp = temps.max() ?? forecasts[0].main.temp
+                    let minTemp = temps.min() ?? forecasts[0].main.temp
+                    let dayForecast = forecasts.first(where: { 
+                        Calendar.current.component(.hour, from: $0.dt) >= 12 &&
+                        Calendar.current.component(.hour, from: $0.dt) <= 15
+                    }) ?? forecasts[0]
+                    
+                    return WeatherData(
+                        id: UUID(),
+                        temperature: dayForecast.main.temp,
+                        feelsLike: dayForecast.main.feelsLike,
+                        humidity: dayForecast.main.humidity,
+                        windSpeed: dayForecast.wind.speed,
+                        precipitation: dayForecast.pop * 100,
+                        visibility: Double(dayForecast.visibility) / 1000,
+                        description: dayForecast.weather.first?.description ?? "",
+                        icon: dayForecast.weather.first?.icon ?? "",
+                        timestamp: date,
+                        highTemp: maxTemp,
+                        lowTemp: minTemp
+                    )
+                }
+                .sorted { $0.timestamp < $1.timestamp }
+                
+                print("Successfully fetched \(dailyForecasts.count) daily forecasts")
+                
+                DispatchQueue.main.async {
+                    self.dailyForecast = dailyForecasts
+                    self.error = nil
+                    
+                    if let currentTemp = dailyForecasts.first?.temperature,
+                       let highTemp = dailyForecasts.first?.highTemp,
+                       let lowTemp = dailyForecasts.first?.lowTemp,
+                       let selectedLocation = self.selectedLocation {
+                        self.addRecentLocation(selectedLocation, temperature: currentTemp, highTemp: highTemp, lowTemp: lowTemp)
+                    }
+                }
                 
             case 401:
-                logger.error("API Key error (401)")
+                print("API Key error (401)")
                 throw EnvironmentError.invalidAPIKey
             case 403:
-                logger.error("API Key not active (403)")
+                print("API Key not active (403)")
                 throw EnvironmentError.apiKeyNotActive
-            case 404:
-                logger.error("Location not found (404)")
-                throw LocationSearchError.noResults
             default:
-                logger.error("Unexpected status code: \(httpResponse.statusCode)")
+                print("Unexpected status code: \(httpResponse.statusCode)")
                 throw EnvironmentError.networkError(NSError(domain: "WeatherService", code: httpResponse.statusCode))
             }
         } catch {
-            logger.error("Error fetching 5-day forecast: \(error.localizedDescription)")
-            self.error = error
-        }
-    }
-    
-    private func processDailyForecasts(_ forecasts: [ForecastItem]) -> [WeatherData] {
-        let groupedForecasts = Dictionary(grouping: forecasts) {
-            Calendar.current.startOfDay(for: $0.dt)
-        }
-        
-        return groupedForecasts.map { (date, forecasts) -> WeatherData in
-            let temps = forecasts.map { $0.main.temp }
-            let maxTemp = temps.max() ?? forecasts[0].main.temp
-            let minTemp = temps.min() ?? forecasts[0].main.temp
-            
-            // Find the forecast closest to noon for the most representative daily conditions
-            let noonTime = Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: date) ?? date
-            let dayForecast = forecasts.min(by: { abs($0.dt.timeIntervalSince(noonTime)) < abs($1.dt.timeIntervalSince(noonTime)) }) ?? forecasts[0]
-            
-            // Calculate average values for better accuracy
-            let avgHumidity = forecasts.map { Double($0.main.humidity) }.reduce(0, +) / Double(forecasts.count)
-            let avgWindSpeed = forecasts.map { $0.wind.speed }.reduce(0, +) / Double(forecasts.count)
-            let avgPrecipitation = forecasts.map { $0.pop }.reduce(0, +) / Double(forecasts.count) * 100
-            
-            return WeatherData(
-                id: UUID(),
-                temperature: dayForecast.main.temp,
-                feelsLike: dayForecast.main.feelsLike,
-                humidity: Int(round(avgHumidity)),
-                windSpeed: avgWindSpeed,
-                precipitation: avgPrecipitation,
-                uvIndex: estimateUVIndex(for: dayForecast.dt),
-                visibility: Double(dayForecast.visibility) / 1000,
-                description: dayForecast.weather.first?.description ?? "No description available",
-                icon: dayForecast.weather.first?.icon ?? "01d",
-                timestamp: date,
-                highTemp: maxTemp,
-                lowTemp: minTemp
-            )
-        }.sorted { $0.timestamp < $1.timestamp }
-    }
-    
-    private func estimateUVIndex(for date: Date) -> Double {
-        let hour = Calendar.current.component(.hour, from: date)
-        
-        // Estimate UV index based on time of day
-        switch hour {
-        case 0..<6, 19...23: // Night
-            return 0
-        case 6..<8, 17..<19: // Dawn/Dusk
-            return 2
-        case 8..<10, 15..<17: // Morning/Late Afternoon
-            return 4
-        case 10..<15: // Midday
-            return 7
-        default:
-            return 0
-        }
-    }
-    
-    private func findBestAndWorstRidingTimes(forecasts: [WeatherData]) {
-        let sortedForecasts = forecasts.sorted { $0.ridingConfidence > $1.ridingConfidence }
-        
-        if let bestTime = sortedForecasts.first {
-            print("Best riding conditions: \(bestTime.timestamp), Confidence: \(bestTime.ridingConfidence)%")
-            print("Conditions: \(bestTime.ridingDescription)")
-        }
-        
-        if let worstTime = sortedForecasts.last {
-            print("Worst riding conditions: \(worstTime.timestamp), Confidence: \(worstTime.ridingConfidence)%")
-            print("Conditions: \(worstTime.ridingDescription)")
+            print("Error fetching daily forecast: \(error.localizedDescription)")
+            DispatchQueue.main.async {
+                self.error = error
+            }
         }
     }
     
@@ -425,42 +347,55 @@ class WeatherService: ObservableObject {
             return (cachedResults, nil)
         }
         
-        do {
-            // Add a small delay to allow for more typing
-            try await Task.sleep(for: .milliseconds(300))
-            
-            // Check if task was cancelled
-            if Task.isCancelled {
-                return ([], nil)
-            }
-            
-            // Use async version of geocoding
-            let placemarks = try await geocoder.geocodeAddressString(query)
-            
-            let locations = placemarks.compactMap { place -> Location? in
-                guard let location = place.location else { return nil }
+        // Create a new search task
+        return await withCheckedContinuation { continuation in
+            searchTask = Task {
+                // Add a small delay to allow for more typing
+                try? await Task.sleep(for: .milliseconds(300))
                 
-                return Location(
-                    id: UUID(),
-                    name: place.name ?? place.locality ?? place.administrativeArea ?? "Unknown Location",
-                    city: place.locality ?? place.administrativeArea ?? "Unknown City",
-                    state: place.administrativeArea,
-                    country: place.country ?? "Unknown Country",
-                    latitude: location.coordinate.latitude,
-                    longitude: location.coordinate.longitude
-                )
+                // Check if task was cancelled
+                if Task.isCancelled {
+                    continuation.resume(returning: ([], nil))
+                    return
+                }
+                
+                // Perform geocoding
+                geocoder.geocodeAddressString(query) { placemarks, error in
+                    if let error = error {
+                        // Only return network error if it's not a cancellation
+                        if (error as NSError).domain != kCLErrorDomain {
+                            continuation.resume(returning: ([], .networkError(error)))
+                        } else {
+                            continuation.resume(returning: ([], nil))
+                        }
+                        return
+                    }
+                    
+                    guard let placemarks = placemarks else {
+                        continuation.resume(returning: ([], nil))
+                        return
+                    }
+                    
+                    let locations = placemarks.compactMap { place -> Location? in
+                        guard let location = place.location else { return nil }
+                        
+                        return Location(
+                            id: UUID(),
+                            name: place.name ?? place.locality ?? place.administrativeArea ?? "Unknown Location",
+                            city: place.locality ?? place.administrativeArea ?? "Unknown City",
+                            state: place.administrativeArea,
+                            country: place.country ?? "Unknown Country",
+                            latitude: location.coordinate.latitude,
+                            longitude: location.coordinate.longitude
+                        )
+                    }
+                    
+                    // Cache the results
+                    self.locationCache[query] = locations
+                    
+                    continuation.resume(returning: (locations, nil))
+                }
             }
-            
-            // Cache the results
-            locationCache[query] = locations
-            
-            return (locations, nil)
-        } catch {
-            // Only return network error if it's not a cancellation
-            if (error as NSError).domain != kCLErrorDomain {
-                return ([], .networkError(error))
-            }
-            return ([], nil)
         }
     }
 }
@@ -503,6 +438,10 @@ struct Rain: Codable {
     }
 }
 
+struct ForecastResponse: Codable {
+    let list: [ForecastItem]
+}
+
 struct ForecastItem: Codable {
     let dt: Date
     let main: Main
@@ -511,14 +450,6 @@ struct ForecastItem: Codable {
     let rain: Rain?
     let visibility: Int
     let pop: Double
-    
-    enum CodingKeys: String, CodingKey {
-        case dt, main, weather, wind, rain, visibility, pop
-    }
-}
-
-struct ForecastResponse: Codable {
-    let list: [ForecastItem]
 }
 
 struct OneCallResponse: Codable {
@@ -563,9 +494,4 @@ struct DayTemperature: Codable {
 
 struct DayFeelsLike: Codable {
     let day: Double
-}
-
-struct APIError: Codable {
-    let cod: Int
-    let message: String
 } 

@@ -15,6 +15,7 @@ struct ContentView: View {
     
     var body: some View {
         TabView {
+            // Weather Tab
             NavigationView {
                 WeatherTabView(viewModel: viewModel, showingLocationSearch: $showingLocationSearch)
             }
@@ -22,6 +23,7 @@ struct ContentView: View {
                 Label("Weather", systemImage: "cloud.sun.fill")
             }
             
+            // Settings Tab
             NavigationView {
                 SettingsTabView(viewModel: viewModel)
             }
@@ -29,10 +31,11 @@ struct ContentView: View {
                 Label("Settings", systemImage: "gearshape.fill")
             }
         }
-        .tint(.blue)
+        .tint(.blue) // Use system blue for consistency
     }
 }
 
+// MARK: - Weather Tab View
 struct WeatherTabView: View {
     @ObservedObject var viewModel: WeatherViewModel
     @Binding var showingLocationSearch: Bool
@@ -41,15 +44,58 @@ struct WeatherTabView: View {
     
     var body: some View {
         ZStack {
-            backgroundGradient
+            // Dynamic gradient background
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    Color.blue.opacity(colorScheme == .dark ? 0.3 : 0.1),
+                    Color(.systemBackground)
+                ]),
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
             
-            content
+            if !viewModel.isEnvironmentValid {
+                environmentErrorView
+            } else if viewModel.currentLocation == nil {
+                // Only show welcome view if no location is saved
+                welcomeView
+            } else if viewModel.isLoading && viewModel.currentWeather == nil {
+                // Show loading only during initial load
+                ProgressView("Loading weather data...")
+                    .scaleEffect(1.5)
+                    .padding()
+            } else if let weather = viewModel.currentWeather {
+                weatherContentView
+            } else {
+                // Fallback if we have location but no weather
+        VStack {
+                    Text("Unable to load weather data")
+                        .font(.headline)
+                    Button("Retry") {
+                        if let location = viewModel.currentLocation {
+                            Task {
+                                await viewModel.fetchWeather(for: location)
+                            }
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
         }
         .navigationTitle(viewModel.currentLocation?.name ?? "Weather")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                locationButton
+                Button {
+                    showingLocationSearch = true
+                } label: {
+                    Image(systemName: "location.circle.fill")
+                        .font(.system(size: 22))
+                        .frame(width: 44, height: 44)
+                        .foregroundColor(.blue)
+                        .accessibilityLabel("Search Location")
+                }
             }
         }
         .sheet(isPresented: $showingLocationSearch) {
@@ -60,143 +106,78 @@ struct WeatherTabView: View {
         }
     }
     
-    private var backgroundGradient: some View {
-        LinearGradient(
-            gradient: Gradient(colors: [
-                Color.blue.opacity(colorScheme == .dark ? 0.3 : 0.1),
-                Color(.systemBackground)
-            ]),
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .ignoresSafeArea()
-    }
-    
-    @ViewBuilder
-    private var content: some View {
-        if !viewModel.isEnvironmentValid {
-            environmentErrorView
-        } else if viewModel.currentLocation == nil {
-            welcomeView
-        } else if viewModel.isLoading && viewModel.currentWeather == nil {
-            loadingView
-        } else if let currentWeather = viewModel.currentWeather {
-            weatherContentView(currentWeather)
-        } else {
-            errorView
-        }
-    }
-    
-    private var loadingView: some View {
-        ProgressView("Loading weather data...")
-            .scaleEffect(1.5)
-            .padding()
-    }
-    
-    private var environmentErrorView: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 50))
-                .foregroundColor(.red)
-            
-            Text("Environment Configuration Error")
-                .font(.title2)
-                .bold()
-            
-            if let error = viewModel.environmentError {
-                Text(error.localizedDescription)
-                    .multilineTextAlignment(.center)
-                    .foregroundColor(.secondary)
-            }
-            
-            Button("Retry Validation") {
-                Task {
-                    await viewModel.validateEnvironment()
-                }
-            }
-            .buttonStyle(.borderedProminent)
-        }
-        .padding()
-    }
-    
-    private var welcomeView: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "motorcycle.circle.fill")
-                .font(.system(size: 80))
-                .foregroundColor(.blue)
-            
-            Text("Welcome to MotoForecast")
-                .font(.title)
-                .bold()
-            
-            Text("Select your location to get started")
-                .foregroundColor(.secondary)
-            
-            Button {
-                showingLocationSearch = true
-            } label: {
-                Text("Select Location")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .padding()
-                    .background(Color.blue)
-                    .cornerRadius(10)
-            }
-        }
-        .padding()
-    }
-    
-    private var errorView: some View {
-        VStack {
-            Text("Unable to load weather data")
-                .font(.headline)
-            Button("Retry") {
-                if let location = viewModel.currentLocation {
-                    Task {
-                        await viewModel.fetchWeather(for: location)
-                    }
-                }
-            }
-            .buttonStyle(.bordered)
-        }
-    }
-    
-    private var locationButton: some View {
-        Button {
-            showingLocationSearch = true
-        } label: {
-            Image(systemName: "location.circle.fill")
-                .font(.system(size: 22))
-                .frame(width: 44, height: 44)
-                .foregroundColor(.blue)
-                .accessibilityLabel("Search Location")
-        }
-    }
-    
-    private var locationSearchView: some View {
-        NavigationView {
-            LocationSearchView(viewModel: viewModel, isPresented: $showingLocationSearch)
-        }
-    }
-    
-    private func weatherContentView(_ weather: WeatherData) -> some View {
+    // MARK: - Weather Content View
+    private var weatherContentView: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 16) {
-                // Main Weather Info
-                VStack(spacing: 16) {
-                    currentWeatherSection(weather)
-                        .padding(.horizontal)
+                if let weather = viewModel.currentWeather {
                     
-                    ridingAndRecommendationsSection(weather)
+                    // Main Weather Info
+                    VStack(spacing: 16) {
+                        // Current Weather Section
+                        currentWeatherSection(weather)
+                            .padding(.horizontal)
+                        
+                        // Riding and Recommendations Section
+                        HStack(alignment: .top, spacing: 12) {
+                            // Riding Section
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Riding Conditions")
+                                    .font(.headline)
+                                
+                                ridingConfidenceView(weather)
+                            }
+                            .frame(maxWidth: UIScreen.main.bounds.width * 0.35)
+                            
+                            // Recommendations Section
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Recommendations")
+                                    .font(.headline)
+                                
+                                recommendationsView
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
                         .padding(.horizontal)
-                    
-                    hourlyForecastSection
-                    
-                    weatherDetailsGrid(weather)
-                        .padding(.horizontal)
-                    
-                    dailyForecastButton
-                        .padding(.horizontal)
+
+                        // Hourly Forecast Strip
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 16) {
+                                ForEach(viewModel.hourlyForecast) { forecast in
+                                    VStack(spacing: 4) {
+                                        Text(viewModel.formatTemperature(forecast.temperature))
+                                            .font(.system(size: 20, weight: .medium))
+                                        
+                                        AsyncImage(url: URL(string: "https://openweathermap.org/img/wn/\(forecast.icon)@2x.png")) { image in
+                                            image
+                                                .resizable()
+                                                .aspectRatio(contentMode: .fit)
+                                                .frame(width: 24, height: 24)
+                                        } placeholder: {
+                                            ProgressView()
+                                                .frame(width: 24, height: 24)
+                                        }
+                                        
+                                        Text(formatHourlyTime(forecast.timestamp))
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .frame(width: 50)
+                                }
+                            }
+                            .padding(.horizontal)
+                        }
+                        .padding(.vertical, 8)
+                        .background(Color(.secondarySystemBackground))
+                        
+                        // Weather Details Grid
+                        weatherDetailsGrid(weather)
+                            .padding(.horizontal)
+                        
+                        // 8-Day Forecast Button
+                        dailyForecastButton
+                            .padding(.horizontal)
+                    }
                 }
             }
         }
@@ -209,6 +190,7 @@ struct WeatherTabView: View {
         }
     }
     
+    // MARK: - Current Weather Section
     private func currentWeatherSection(_ weather: WeatherData) -> some View {
         VStack(spacing: 12) {
             VStack(spacing: 4) {
@@ -255,55 +237,110 @@ struct WeatherTabView: View {
         .cornerRadius(16)
     }
     
-    private func ridingAndRecommendationsSection(_ weather: WeatherData) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Riding Conditions")
-                    .font(.headline)
-                
-                ridingConfidenceView(weather)
-            }
-            .frame(maxWidth: UIScreen.main.bounds.width * 0.35)
+    // MARK: - Weather Details Section
+    private func weatherDetailsSection(_ weather: WeatherData) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Weather Details")
+                .font(.headline)
+                .padding(.horizontal)
             
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Recommendations")
-                    .font(.headline)
-                
-                recommendationsView
-            }
-            .frame(maxWidth: .infinity)
+            weatherDetailsGrid(weather)
+                .padding(.horizontal)
         }
     }
     
-    private var hourlyForecastSection: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 16) {
-                ForEach(viewModel.hourlyForecast) { forecast in
-                    VStack(spacing: 4) {
-                        Text(viewModel.formatTemperature(forecast.temperature))
-                            .font(.system(size: 20, weight: .medium))
-                        
-                        AsyncImage(url: URL(string: "https://openweathermap.org/img/wn/\(forecast.icon)@2x.png")) { image in
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(width: 24, height: 24)
-                        } placeholder: {
-                            ProgressView()
-                                .frame(width: 24, height: 24)
-                        }
-                        
-                        Text(formatHourlyTime(forecast.timestamp))
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(width: 50)
+    // MARK: - Recommendations Section
+    private var recommendationsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Recommendations")
+                .font(.headline)
+                .padding(.horizontal)
+            
+            recommendationsView
+                .padding(.horizontal)
+        }
+    }
+    
+    private var locationHeader: some View {
+        HStack {
+            if let location = viewModel.currentLocation {
+                Text(location.name)
+                    .font(.title2)
+                    .bold()
+            } else {
+                Text("Select Location")
+                    .font(.title2)
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            Button {
+                showingLocationSearch = true
+            } label: {
+                Image(systemName: "location.circle.fill")
+                    .font(.title2)
+            }
+        }
+    }
+    
+    private func currentWeatherCard(_ weather: WeatherData) -> some View {
+        print("Displaying Current Weather Card")
+        return VStack(spacing: 10) {
+            HStack {
+                AsyncImage(url: URL(string: "https://openweathermap.org/img/wn/\(weather.icon)@2x.png")) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                } placeholder: {
+                    ProgressView()
+                }
+                .frame(width: 50, height: 50)
+                
+                VStack(alignment: .leading) {
+                    Text("\(Int(weather.temperature))°C")
+                        .font(.system(size: 40, weight: .bold))
+                    Text(weather.description.capitalized)
+                        .foregroundColor(.secondary)
                 }
             }
-            .padding(.horizontal)
+            
+            HStack {
+                WeatherDataView(title: "Feels Like", value: "\(Int(weather.feelsLike))°C")
+                WeatherDataView(title: "Humidity", value: "\(weather.humidity)%")
+                WeatherDataView(title: "Wind", value: "\(Int(weather.windSpeed)) km/h")
+            }
         }
-        .padding(.vertical, 8)
+        .padding()
         .background(Color(.secondarySystemBackground))
+        .cornerRadius(15)
+    }
+    
+    private func ridingConfidenceView(_ weather: WeatherData) -> some View {
+        VStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .stroke(Color(.systemGray5), lineWidth: 8)
+                    .frame(width: 100, height: 100)
+                
+                Circle()
+                    .trim(from: 0, to: CGFloat(weather.ridingConfidence) / 100)
+                    .stroke(confidenceColor(weather.ridingConfidence), lineWidth: 8)
+                    .frame(width: 100, height: 100)
+                    .rotationEffect(.degrees(-90))
+                
+                VStack(spacing: 2) {
+                    Text("\(weather.ridingConfidence)%")
+                        .font(.system(size: 24, weight: .bold))
+                    Text(weather.ridingCondition.rawValue)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .cornerRadius(16)
     }
     
     private func weatherDetailsGrid(_ weather: WeatherData) -> some View {
@@ -312,26 +349,28 @@ struct WeatherTabView: View {
             GridItem(.flexible()),
             GridItem(.flexible())
         ], spacing: 16) {
-            WeatherDataView(title: "UV Index", value: String(format: "%.0f", weather.uvIndex))
             WeatherDataView(title: "Visibility", value: formatVisibility(weather.visibility))
-            WeatherDataView(title: "Precipitation", value: formatPrecipitation(weather.precipitation))
+            WeatherDataView(title: "Precipitation", value: "\(Int(weather.precipitation))%")
         }
         .padding()
         .background(Color(.secondarySystemBackground))
         .cornerRadius(16)
     }
     
-    private var dailyForecastButton: some View {
-        Button(action: {
-            showDailyForecast = true
-        }) {
-            Text("Daily Forecast")
-                .font(.headline)
-                .foregroundColor(.blue)
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(Color(.secondarySystemBackground))
-                .cornerRadius(16)
+    private func formatVisibility(_ visibility: Double?) -> String {
+        guard let visibility = visibility else { return "N/A" }
+        
+        switch visibility {
+        case 0..<1:
+            return "Poor"
+        case 1..<3:
+            return "Moderate"
+        case 3..<6:
+            return "Good"
+        case 6..<10:
+            return "Very Good"
+        default:
+            return "Excellent"
         }
     }
     
@@ -355,50 +394,93 @@ struct WeatherTabView: View {
         .cornerRadius(16)
     }
     
-    private func ridingConfidenceView(_ weather: WeatherData) -> some View {
-        VStack(spacing: 8) {
-            ZStack {
-                Circle()
-                    .stroke(Color(.systemGray5), lineWidth: 8)
-                    .frame(width: 100, height: 100)
-                
-                Circle()
-                    .trim(from: 0, to: CGFloat(weather.ridingConfidence) / 100)
-                    .stroke(confidenceColor(weather.ridingConfidence), lineWidth: 8)
-                    .frame(width: 100, height: 100)
-                    .rotationEffect(.degrees(-90))
-                
-                VStack(spacing: 2) {
-                    Text("\(weather.ridingConfidence)%")
-                        .font(.system(size: 24, weight: .bold))
-                    Text(weather.ridingCondition.description)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+    private var welcomeView: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "motorcycle.circle.fill")
+                .font(.system(size: 80))
+                .foregroundColor(.blue)
+            
+            Text("Welcome to MotoForecast")
+                .font(.title)
+                .bold()
+            
+            Text("Select your location to get started")
+                .foregroundColor(.secondary)
+            
+            Button {
+                showingLocationSearch = true
+            } label: {
+                Text("Select Location")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(Color.blue)
+                    .cornerRadius(10)
             }
         }
         .padding()
-        .background(Color(.secondarySystemBackground))
-        .cornerRadius(16)
     }
     
-    private func formatVisibility(_ visibility: Double?) -> String {
-        guard let visibility = visibility else { return "N/A" }
-        
-        switch visibility {
-        case 0..<1: return "Poor"
-        case 1..<3: return "Moderate"
-        case 3..<6: return "Good"
-        case 6..<10: return "Very Good"
-        default: return "Excellent"
+    private var environmentErrorView: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 50))
+                .foregroundColor(.red)
+            
+            Text("Environment Configuration Error")
+                .font(.title2)
+                .bold()
+            
+            if let error = viewModel.environmentError {
+                Text(error.localizedDescription)
+                    .multilineTextAlignment(.center)
+                    .foregroundColor(.secondary)
+            }
+            
+            Button("Retry Validation") {
+                Task {
+                    await viewModel.validateEnvironment()
+                }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding()
+    }
+    
+    private func confidenceColor(_ confidence: Int) -> Color {
+        switch confidence {
+        case 80...100:
+            return .green
+        case 50..<80:
+            return .yellow
+        default:
+            return .red
         }
     }
     
-    private func formatPrecipitation(_ precipitation: Double?) -> String {
-        if let precip = precipitation {
-            return "\(Int(precip))%"
+    private var locationSearchView: some View {
+        NavigationView {
+            List {
+                ForEach(viewModel.searchResults) { location in
+                    Button {
+                        viewModel.selectLocation(location)
+                        showingLocationSearch = false
+                    } label: {
+                        Text(location.name)
+                    }
+                }
+            }
+            .searchable(text: $viewModel.searchQuery)
+            .onChange(of: viewModel.searchQuery) { oldValue, newValue in
+                Task {
+                    await viewModel.searchLocations()
+                }
+            }
+            .navigationTitle("Search Location")
+            .navigationBarItems(trailing: Button("Cancel") {
+                showingLocationSearch = false
+            })
         }
-        return "0%"
     }
     
     private func formatHourlyTime(_ date: Date) -> String {
@@ -407,11 +489,17 @@ struct WeatherTabView: View {
         return formatter.string(from: date)
     }
     
-    private func confidenceColor(_ confidence: Int) -> Color {
-        switch confidence {
-        case 80...100: return .green
-        case 50..<80: return .yellow
-        default: return .red
+    private var dailyForecastButton: some View {
+        Button(action: {
+            showDailyForecast = true
+        }) {
+            Text("8-Day Forecast")
+                .font(.headline)
+                .foregroundColor(.blue)
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(Color(.secondarySystemBackground))
+                .cornerRadius(16)
         }
     }
 }
