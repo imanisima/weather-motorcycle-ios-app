@@ -30,11 +30,6 @@ struct WeatherView: View {
                             currentWeatherSection(currentWeather)
                         }
                         
-                        // Hourly forecast
-                        if !viewModel.hourlyForecast.isEmpty {
-                            hourlyForecastSection
-                        }
-                        
                         // Daily forecast
                         if !viewModel.dailyForecast.isEmpty {
                             dailyForecastSection
@@ -103,6 +98,7 @@ struct WeatherView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.bottom, 8)
 
+
             // Current Riding Condition
             WeatherCard(title: "") {
                 HStack {
@@ -118,6 +114,62 @@ struct WeatherView: View {
                     
                     RidingConditionPill(condition: weather.ridingCondition)
                 }
+            }
+            
+            // Hourly forecast
+            if !viewModel.hourlyForecast.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Hourly Forecast")
+                        .font(Theme.Typography.title3)
+                        .foregroundColor(.white)
+                        .padding(.leading, 4)
+                    
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 16) {
+                            ForEach(viewModel.hourlyForecast) { forecast in
+                                NavigationLink(destination: HourlyForecastDetailView(forecast: forecast, viewModel: viewModel)) {
+                                    VStack(spacing: 8) {
+                                        // Time
+                                        Text(formatHour(forecast.timestamp))
+                                            .font(Theme.Typography.caption)
+                                            .foregroundColor(.white)
+                                        
+                                        // Weather icon
+                                        WeatherIcon(iconCode: forecast.icon, size: 40)
+                                        
+                                        // Temperature
+                                        Text("\(viewModel.formatTemperature(forecast.temperature))°")
+                                            .font(Theme.Typography.body)
+                                            .foregroundColor(.white)
+                                        
+                                        if forecast.precipitation > 0 {
+                                            HStack(spacing: 2) {
+                                                Image(systemName: "drop.fill")
+                                                    .font(.system(size: 10))
+                                                Text("\(Int(round(forecast.precipitation)))%")
+                                            }
+                                            .font(Theme.Typography.caption)
+                                            .foregroundColor(.blue)
+                                        }
+                                        
+                                        // Riding condition indicator
+                                        Circle()
+                                            .fill(colorForCondition(forecast.ridingCondition))
+                                            .frame(width: 8, height: 8)
+                                    }
+                                    .frame(width: 60)
+                                    .padding(.vertical, 12)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(Theme.Colors.asphalt.opacity(0.5))
+                                    )
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 4)
+                    }
+                }
+                .padding(.bottom, 16)
             }
 
             // Weather Stats Card
@@ -270,60 +322,6 @@ struct WeatherView: View {
                         }
                     }
                 }
-            }
-        }
-    }
-    
-    private var hourlyForecastSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Hourly Forecast")
-                .font(Theme.Typography.title3)
-                .foregroundColor(.white)
-                .padding(.leading, 4)
-            
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 16) {
-                    ForEach(viewModel.hourlyForecast) { forecast in
-                        NavigationLink(destination: HourlyForecastDetailView(forecast: forecast, viewModel: viewModel)) {
-                            VStack(spacing: 8) {
-                                // Time
-                                Text(formatHour(forecast.timestamp))
-                                    .font(Theme.Typography.caption)
-                                    .foregroundColor(.white)
-                                
-                                // Weather icon
-                                WeatherIcon(iconCode: forecast.icon, size: 40)
-                                
-                                // Temperature
-                                Text("\(viewModel.formatTemperature(forecast.temperature))°")
-                                    .font(Theme.Typography.body)
-                                    .foregroundColor(.white)
-                                
-                                if forecast.precipitation > 0 {
-                                    HStack(spacing: 2) {
-                                        Image(systemName: "drop.fill")
-                                            .font(.system(size: 10))
-                                        Text("\(Int(round(forecast.precipitation)))%")
-                                    }
-                                    .font(Theme.Typography.caption)
-                                    .foregroundColor(.blue)
-                                }
-                                
-                                // Riding condition indicator
-                                Circle()
-                                    .fill(colorForCondition(forecast.ridingCondition))
-                                    .frame(width: 8, height: 8)
-                            }
-                            .frame(width: 60)
-                            .padding(.vertical, 12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(Theme.Colors.asphalt.opacity(0.5))
-                            )
-                        }
-                    }
-                }
-                .padding(.horizontal, 4)
             }
         }
     }
@@ -556,8 +554,13 @@ struct WeatherView: View {
     }
     
     private func formatDay(_ date: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) {
+            return "Today"
+        }
+        
         let formatter = DateFormatter()
-        formatter.dateFormat = "EEEE"
+        formatter.dateFormat = "EEE, MM/dd"  // e.g., "Sun, 04/20"
         return formatter.string(from: date)
     }
     
