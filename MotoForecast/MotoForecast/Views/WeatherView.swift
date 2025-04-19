@@ -130,6 +130,12 @@ struct WeatherView: View {
                         value: "\(weather.humidity)%"
                     )
                     
+                    WeatherInfoRow(
+                        icon: "drop.fill",
+                        title: "Precipitation",
+                        value: "\(Int(round(weather.precipitation)))%"
+                    )
+                    
                     if let visibility = weather.visibility {
                         WeatherInfoRow(
                             icon: "eye",
@@ -137,14 +143,6 @@ struct WeatherView: View {
                             value: weather.visibilityCondition.rawValue
                         )
                         .foregroundColor(weather.visibilityCondition.color)
-                    }
-                    
-                    if weather.precipitation > 0 {
-                        WeatherInfoRow(
-                            icon: "drop.fill",
-                            title: "Precipitation",
-                            value: "\(Int(round(weather.precipitation)))%"
-                        )
                     }
                 }
             }
@@ -175,6 +173,16 @@ struct WeatherView: View {
                                 Text("\(viewModel.formatTemperature(forecast.temperature))°")
                                     .font(Theme.Typography.body)
                                     .foregroundColor(.white)
+                                
+                                if forecast.precipitation > 0 {
+                                    HStack(spacing: 2) {
+                                        Image(systemName: "drop.fill")
+                                            .font(.system(size: 10))
+                                        Text("\(Int(round(forecast.precipitation)))%")
+                                    }
+                                    .font(Theme.Typography.caption)
+                                    .foregroundColor(.blue)
+                                }
                                 
                                 // Riding condition indicator
                                 Circle()
