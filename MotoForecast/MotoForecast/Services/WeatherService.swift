@@ -1,26 +1,6 @@
 import Foundation
 import CoreLocation
 
-enum LocationSearchError: LocalizedError {
-    case geocodingFailed
-    case noResults
-    case invalidLocation
-    case networkError(Error)
-    
-    var errorDescription: String? {
-        switch self {
-        case .geocodingFailed:
-            return "Failed to search for locations. Please try again."
-        case .noResults:
-            return "No locations found. Please try a different search term."
-        case .invalidLocation:
-            return "Invalid location data received."
-        case .networkError(let error):
-            return "Network error: \(error.localizedDescription)"
-        }
-    }
-}
-
 class WeatherService: ObservableObject {
     private let apiKey = APIConfig.openWeatherAPIKey
     private let baseURL = APIConfig.openWeatherBaseURL
@@ -86,14 +66,12 @@ class WeatherService: ObservableObject {
         }
     }
     
-    private func loadLastViewedLocation() {
-        if let data = userDefaults.data(forKey: lastViewedLocationKey),
-           let location = try? JSONDecoder().decode(Location.self, from: data) {
-            selectedLocation = location
-            Task {
-                await fetchWeather(for: location)
-            }
+    public func loadLastViewedLocation() -> Location? {
+        guard let data = userDefaults.data(forKey: lastViewedLocationKey),
+              let location = try? JSONDecoder().decode(Location.self, from: data) else {
+            return nil
         }
+        return location
     }
     
     private func saveLastViewedLocation(_ location: Location) {
@@ -212,8 +190,8 @@ class WeatherService: ObservableObject {
             decoder.dateDecodingStrategy = .secondsSince1970
             let forecastResponse = try decoder.decode(ForecastResponse.self, from: data)
             
-            // Filter for next 24 hours
-            let next24Hours = forecastResponse.list.prefix(8)
+            // Get all 24 hours (OpenWeather API provides data in 3-hour intervals)
+            let next24Hours = forecastResponse.list.prefix(24)
             
             let hourlyForecasts = next24Hours.map { item in
                 WeatherData(
@@ -247,7 +225,7 @@ class WeatherService: ObservableObject {
         guard let url = URL(string: urlString) else {
             print("Invalid URL for daily forecast")
             DispatchQueue.main.async {
-                self.error = LocationSearchError.invalidLocation
+                self.error = LocationSearchError.invalidResponse
             }
             return
         }
@@ -258,7 +236,7 @@ class WeatherService: ObservableObject {
             
             guard let httpResponse = response as? HTTPURLResponse else {
                 print("Invalid HTTP response")
-                throw EnvironmentError.networkError(NSError(domain: "WeatherService", code: -1))
+                throw LocationSearchError.invalidResponse
             }
             
             print("Daily forecast response status: \(httpResponse.statusCode)")
@@ -269,68 +247,65 @@ class WeatherService: ObservableObject {
                 decoder.dateDecodingStrategy = .secondsSince1970
                 let forecastResponse = try decoder.decode(ForecastResponse.self, from: data)
                 
-                // Group forecasts by day
-                let groupedForecasts = Dictionary(grouping: forecastResponse.list) {
-                    Calendar.current.startOfDay(for: $0.dt)
-                }
-                
-                // Create daily forecasts from grouped data
-                let dailyForecasts = groupedForecasts.map { (date, forecasts) -> WeatherData in
-                    let temps = forecasts.map { $0.main.temp }
-                    let maxTemp = temps.max() ?? forecasts[0].main.temp
-                    let minTemp = temps.min() ?? forecasts[0].main.temp
-                    let dayForecast = forecasts.first(where: { 
-                        Calendar.current.component(.hour, from: $0.dt) >= 12 &&
-                        Calendar.current.component(.hour, from: $0.dt) <= 15
-                    }) ?? forecasts[0]
-                    
-                    return WeatherData(
-                        id: UUID(),
-                        temperature: dayForecast.main.temp,
-                        feelsLike: dayForecast.main.feelsLike,
-                        humidity: dayForecast.main.humidity,
-                        windSpeed: dayForecast.wind.speed,
-                        precipitation: dayForecast.pop * 100,
-                        visibility: Double(dayForecast.visibility) / 1000,
-                        description: dayForecast.weather.first?.description ?? "",
-                        icon: dayForecast.weather.first?.icon ?? "",
-                        timestamp: date,
-                        highTemp: maxTemp,
-                        lowTemp: minTemp
-                    )
-                }
-                .sorted { $0.timestamp < $1.timestamp }
-                
-                print("Successfully fetched \(dailyForecasts.count) daily forecasts")
+                // Process daily forecasts (group by day and get min/max temps)
+                let dailyForecasts = processDailyForecasts(from: forecastResponse.list)
                 
                 DispatchQueue.main.async {
                     self.dailyForecast = dailyForecasts
                     self.error = nil
-                    
-                    if let currentTemp = dailyForecasts.first?.temperature,
-                       let highTemp = dailyForecasts.first?.highTemp,
-                       let lowTemp = dailyForecasts.first?.lowTemp,
-                       let selectedLocation = self.selectedLocation {
-                        self.addRecentLocation(selectedLocation, temperature: currentTemp, highTemp: highTemp, lowTemp: lowTemp)
-                    }
                 }
                 
             case 401:
-                print("API Key error (401)")
                 throw EnvironmentError.invalidAPIKey
             case 403:
-                print("API Key not active (403)")
                 throw EnvironmentError.apiKeyNotActive
             default:
-                print("Unexpected status code: \(httpResponse.statusCode)")
-                throw EnvironmentError.networkError(NSError(domain: "WeatherService", code: httpResponse.statusCode))
+                throw LocationSearchError.networkError(NSError(domain: "WeatherService", code: httpResponse.statusCode))
             }
         } catch {
-            print("Error fetching daily forecast: \(error.localizedDescription)")
+            print("Error fetching daily forecast: \(error)")
             DispatchQueue.main.async {
                 self.error = error
             }
         }
+    }
+    
+    private func processDailyForecasts(from forecasts: [ForecastItem]) -> [WeatherData] {
+        // Group forecasts by day
+        let groupedForecasts = Dictionary(grouping: forecasts) {
+            Calendar.current.startOfDay(for: $0.dt)
+        }
+        
+        // Create daily forecasts from grouped data
+        let dailyForecasts = groupedForecasts.map { (date, forecasts) -> WeatherData in
+            let temps = forecasts.map { $0.main.temp }
+            let maxTemp = temps.max() ?? forecasts[0].main.temp
+            let minTemp = temps.min() ?? forecasts[0].main.temp
+            let dayForecast = forecasts.first(where: { 
+                Calendar.current.component(.hour, from: $0.dt) >= 12 &&
+                Calendar.current.component(.hour, from: $0.dt) <= 15
+            }) ?? forecasts[0]
+            
+            return WeatherData(
+                id: UUID(),
+                temperature: dayForecast.main.temp,
+                feelsLike: dayForecast.main.feelsLike,
+                humidity: dayForecast.main.humidity,
+                windSpeed: dayForecast.wind.speed,
+                precipitation: dayForecast.pop * 100,
+                visibility: Double(dayForecast.visibility) / 1000,
+                description: dayForecast.weather.first?.description ?? "",
+                icon: dayForecast.weather.first?.icon ?? "",
+                timestamp: date,
+                highTemp: maxTemp,
+                lowTemp: minTemp
+            )
+        }
+        .sorted { $0.timestamp < $1.timestamp }
+        
+        print("Successfully fetched \(dailyForecasts.count) daily forecasts")
+        
+        return dailyForecasts
     }
     
     func searchLocations(query: String) async -> (locations: [Location], error: LocationSearchError?) {

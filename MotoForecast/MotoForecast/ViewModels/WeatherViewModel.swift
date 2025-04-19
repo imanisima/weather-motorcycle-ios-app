@@ -13,6 +13,7 @@ class WeatherViewModel: ObservableObject {
     @Published var currentWeather: WeatherData?
     @Published var hourlyForecast: [WeatherData] = []
     @Published var dailyForecast: [WeatherData] = []
+    @Published var recentLocations: [RecentLocation] = []
     @Published var useMetricSystem: Bool {
         didSet {
             userDefaults.set(useMetricSystem, forKey: "useMetricSystem")
@@ -47,30 +48,17 @@ class WeatherViewModel: ObservableObject {
             self.useCelsius = true
         }
         
-        // Load environment and location synchronously
-        if let data = userDefaults.data(forKey: locationKey),
-           let location = try? JSONDecoder().decode(Location.self, from: data) {
-            self.currentLocation = location
-            // Immediately start fetching weather
-            Task {
-                await validateEnvironment()
-                if isEnvironmentValid {
-                    await fetchWeather(for: location)
-                }
-            }
-        } else {
-            // No saved location, just validate environment
-            Task {
-                await validateEnvironment()
-            }
+        // Load initial data
+        Task {
+            await validateEnvironment()
+            await loadLastLocation()
         }
     }
     
     private func refreshWeather() {
-        if let location = currentLocation {
-            Task {
-                await fetchWeather(for: location)
-            }
+        guard let location = currentLocation else { return }
+        Task {
+            await fetchWeather(for: location)
         }
     }
     
@@ -85,65 +73,38 @@ class WeatherViewModel: ObservableObject {
         }
     }
     
-    func searchLocations() async {
-        // Clear previous results and errors for empty queries
-        if searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            searchResults = []
-            errorMessage = nil
-            return
-        }
-        
+    func searchLocations(_ query: String) async -> LocationSearchResult {
         isLoading = true
-        let result = await weatherService.searchLocations(query: searchQuery)
+        defer { isLoading = false }
         
+        let result = await weatherService.searchLocations(query: query)
         searchResults = result.locations
-        errorMessage = result.error?.localizedDescription
-        
-        // Only show error message if we have no results
-        if searchResults.isEmpty && errorMessage == nil {
-            errorMessage = "No locations found. Please try a different search term."
-        }
-        
-        isLoading = false
+        return LocationSearchResult(locations: result.locations, error: result.error)
     }
     
-    func selectLocation(_ location: Location) {
+    func selectLocation(_ location: Location) async {
         currentLocation = location
-        saveLocation(location)
-        Task {
+        await fetchWeather(for: location)
+    }
+    
+    private func loadLastLocation() async {
+        if let location = weatherService.loadLastViewedLocation() {
+            currentLocation = location
             await fetchWeather(for: location)
         }
     }
     
     func fetchWeather(for location: Location) async {
-        guard isEnvironmentValid else {
-            print("Environment not valid, attempting validation...")
-            await validateEnvironment()
-            return
-        }
-        
         isLoading = true
-        print("Starting weather fetch for location: \(location.name)")
-        // Set current weather to nil to ensure view updates
-        currentWeather = nil
-        hourlyForecast = []
-        dailyForecast = []
+        defer { isLoading = false }
         
-        print("Fetching weather for location: \(location.name)")
+        await weatherService.fetchWeather(for: location, units: useCelsius ? "metric" : "imperial")
         
-        // Always fetch in Celsius (metric) and convert as needed
-        await weatherService.fetchWeather(for: location, units: "metric")
+        // Update published properties
         currentWeather = weatherService.currentWeather
         hourlyForecast = weatherService.hourlyForecast
         dailyForecast = weatherService.dailyForecast
-        
-        print("Weather fetch completed:")
-        print("- Current weather: \(currentWeather != nil)")
-        print("- Hourly forecast count: \(hourlyForecast.count)")
-        print("- Daily forecast count: \(dailyForecast.count)")
-        print("- Daily forecast data: \(dailyForecast.map { "\($0.timestamp): \($0.temperature)°" })")
-        
-        isLoading = false
+        recentLocations = weatherService.recentLocations
     }
     
     private func saveLocation(_ location: Location) {
@@ -165,14 +126,6 @@ class WeatherViewModel: ObservableObject {
                     await fetchWeather(for: location)
                 }
             }
-        }
-    }
-    
-    func loadLastLocation() async {
-        if let data = userDefaults.data(forKey: locationKey),
-           let location = try? JSONDecoder().decode(Location.self, from: data) {
-            currentLocation = location
-            await fetchWeather(for: location)
         }
     }
     
@@ -241,7 +194,7 @@ class WeatherViewModel: ObservableObject {
     // Helper function to convert temperature
     func formatTemperature(_ temp: Double) -> String {
         let value = useCelsius ? temp : celsiusToFahrenheit(temp)
-        return "\(Int(round(value)))°\(useCelsius ? "C" : "F")"
+        return "\(Int(round(value)))"
     }
     
     // Helper function to convert Celsius to Fahrenheit

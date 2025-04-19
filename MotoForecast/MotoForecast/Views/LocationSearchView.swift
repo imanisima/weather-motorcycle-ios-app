@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct LocationSearchView: View {
-    @ObservedObject var weatherService: WeatherService
+    @ObservedObject var viewModel: WeatherViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
     @State private var searchResults: [Location] = []
@@ -13,10 +13,8 @@ struct LocationSearchView: View {
             Theme.Colors.asphalt.ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // Search header
                 searchHeader
                 
-                // Search results
                 if isSearching {
                     ProgressView()
                         .scaleEffect(1.5)
@@ -49,13 +47,11 @@ struct LocationSearchView: View {
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity, alignment: .center)
                 
-                // Empty view for balance
                 Image(systemName: "xmark")
                     .font(.system(size: Theme.Layout.iconSize))
                     .foregroundColor(.clear)
             }
             
-            // Search field
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.white.opacity(0.7))
@@ -91,29 +87,7 @@ struct LocationSearchView: View {
                     Button(action: {
                         selectLocation(location)
                     }) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(location.city)
-                                    .font(Theme.Typography.body)
-                                    .foregroundColor(.white)
-                                
-                                if let state = location.state {
-                                    Text("\(state), \(location.country)")
-                                        .font(Theme.Typography.caption)
-                                        .foregroundColor(.white.opacity(0.7))
-                                } else {
-                                    Text(location.country)
-                                        .font(Theme.Typography.caption)
-                                        .foregroundColor(.white.opacity(0.7))
-                                }
-                            }
-                            
-                            Spacer()
-                            
-                            Image(systemName: "chevron.right")
-                                .foregroundColor(.white.opacity(0.5))
-                        }
-                        .padding()
+                        LocationRow(location: location)
                     }
                     
                     if location.id != searchResults.last?.id {
@@ -132,7 +106,7 @@ struct LocationSearchView: View {
                 .foregroundColor(.white)
                 .padding(.horizontal)
             
-            if weatherService.recentLocations.isEmpty {
+            if viewModel.recentLocations.isEmpty {
                 Text("No recent locations")
                     .font(Theme.Typography.body)
                     .foregroundColor(.white.opacity(0.7))
@@ -141,30 +115,14 @@ struct LocationSearchView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(weatherService.recentLocations) { recent in
+                        ForEach(viewModel.recentLocations) { recent in
                             Button(action: {
                                 selectLocation(recent.location)
                             }) {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(recent.location.city)
-                                            .font(Theme.Typography.body)
-                                            .foregroundColor(.white)
-                                        
-                                        Text("\(Int(round(recent.temperature)))° • H: \(Int(round(recent.highTemp)))° L: \(Int(round(recent.lowTemp)))°")
-                                            .font(Theme.Typography.caption)
-                                            .foregroundColor(.white.opacity(0.7))
-                                    }
-                                    
-                                    Spacer()
-                                    
-                                    Image(systemName: "chevron.right")
-                                        .foregroundColor(.white.opacity(0.5))
-                                }
-                                .padding()
+                                RecentLocationRow(recent: recent)
                             }
                             
-                            if recent.id != weatherService.recentLocations.last?.id {
+                            if recent.id != viewModel.recentLocations.last?.id {
                                 Divider()
                                     .background(Color.white.opacity(0.2))
                             }
@@ -218,41 +176,77 @@ struct LocationSearchView: View {
     }
     
     private func searchLocations() {
-        // Cancel any existing search
-        weatherService.searchTask?.cancel()
-        
-        // If search text is empty, clear results
-        if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            searchResults = []
-            searchError = nil
-            return
-        }
-        
-        // Set searching state
-        isSearching = true
-        searchError = nil
-        
-        // Perform search
         Task {
-            let result = await weatherService.searchLocations(query: searchText)
-            
-            // Update UI on main thread
-            await MainActor.run {
-                isSearching = false
-                searchResults = result.locations
-                searchError = result.error
-            }
+            isSearching = true
+            let result = await viewModel.searchLocations(searchText)
+            searchResults = result.locations
+            searchError = result.error
+            isSearching = false
         }
     }
     
     private func selectLocation(_ location: Location) {
         Task {
-            await weatherService.fetchWeather(for: location)
+            await viewModel.selectLocation(location)
             dismiss()
         }
     }
 }
 
+private struct LocationRow: View {
+    let location: Location
+    
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(location.city)
+                    .font(Theme.Typography.body)
+                    .foregroundColor(.white)
+                
+                if let state = location.state {
+                    Text("\(state), \(location.country)")
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(.white.opacity(0.7))
+                } else {
+                    Text(location.country)
+                        .font(Theme.Typography.caption)
+                        .foregroundColor(.white.opacity(0.7))
+                }
+            }
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .foregroundColor(.white.opacity(0.5))
+        }
+        .padding()
+    }
+}
+
+private struct RecentLocationRow: View {
+    let recent: RecentLocation
+    
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(recent.location.city)
+                    .font(Theme.Typography.body)
+                    .foregroundColor(.white)
+                
+                Text("\(Int(round(recent.temperature)))° • H: \(Int(round(recent.highTemp)))° L: \(Int(round(recent.lowTemp)))°")
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(.white.opacity(0.7))
+            }
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .foregroundColor(.white.opacity(0.5))
+        }
+        .padding()
+    }
+}
+
 #Preview {
-    LocationSearchView(weatherService: WeatherService())
+    LocationSearchView(viewModel: WeatherViewModel())
 } 

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct WeatherView: View {
-    @ObservedObject var weatherService: WeatherService
+    @ObservedObject var viewModel: WeatherViewModel
     @State private var showingSettings = false
     @State private var showingLocationSearch = false
     
@@ -9,7 +9,7 @@ struct WeatherView: View {
         NavigationView {
             ZStack {
                 // Dynamic weather background
-                if let currentWeather = weatherService.currentWeather {
+                if let currentWeather = viewModel.currentWeather {
                     WeatherBackgroundView(
                         weatherIcon: currentWeather.icon,
                         isDaytime: currentWeather.icon.hasSuffix("d")
@@ -21,27 +21,27 @@ struct WeatherView: View {
                 ScrollView {
                     VStack(spacing: Theme.Layout.cardSpacing) {
                         // Location header
-                        if let location = weatherService.selectedLocation {
+                        if let location = viewModel.currentLocation {
                             locationHeader(location)
                         }
                         
                         // Current weather section
-                        if let currentWeather = weatherService.currentWeather {
+                        if let currentWeather = viewModel.currentWeather {
                             currentWeatherSection(currentWeather)
                         }
                         
                         // Riding advice
-                        if let currentWeather = weatherService.currentWeather {
+                        if let currentWeather = viewModel.currentWeather {
                             ridingAdviceSection(currentWeather)
                         }
                         
                         // Hourly forecast
-                        if !weatherService.hourlyForecast.isEmpty {
+                        if !viewModel.hourlyForecast.isEmpty {
                             hourlyForecastSection
                         }
                         
                         // Daily forecast
-                        if !weatherService.dailyForecast.isEmpty {
+                        if !viewModel.dailyForecast.isEmpty {
                             dailyForecastSection
                         }
                     }
@@ -50,10 +50,10 @@ struct WeatherView: View {
             }
             .navigationBarHidden(true)
             .sheet(isPresented: $showingLocationSearch) {
-                LocationSearchView(weatherService: weatherService)
+                LocationSearchView(viewModel: viewModel)
             }
             .sheet(isPresented: $showingSettings) {
-                SettingsView(weatherService: weatherService)
+                SettingsView(viewModel: viewModel)
             }
         }
     }
@@ -87,11 +87,11 @@ struct WeatherView: View {
             // Temperature and icon
             HStack(alignment: .top) {
                 VStack(alignment: .leading) {
-                    Text("\(Int(round(weather.temperature)))")
+                    Text("\(viewModel.formatTemperature(weather.temperature))")
                         .font(Theme.Typography.temperature)
                         .foregroundColor(.white)
                     
-                    Text("°\(weatherService.useMetricSystem ? "C" : "F")")
+                    Text("°\(viewModel.useCelsius ? "C" : "F")")
                         .font(Theme.Typography.title)
                         .foregroundColor(.white)
                         .offset(x: -10, y: 10)
@@ -118,13 +118,13 @@ struct WeatherView: View {
                     WeatherInfoRow(
                         icon: "thermometer",
                         title: "Feels Like",
-                        value: "\(Int(round(weather.feelsLike)))°\(weatherService.useMetricSystem ? "C" : "F")"
+                        value: "\(viewModel.formatTemperature(weather.feelsLike))°\(viewModel.useCelsius ? "C" : "F")"
                     )
                     
                     WeatherInfoRow(
                         icon: "wind",
                         title: "Wind Speed",
-                        value: "\(Int(round(weather.windSpeed))) \(weatherService.useMetricSystem ? "m/s" : "mph")"
+                        value: viewModel.formatWindSpeed(weather.windSpeed)
                     )
                     
                     WeatherInfoRow(
@@ -137,7 +137,7 @@ struct WeatherView: View {
                         WeatherInfoRow(
                             icon: "eye",
                             title: "Visibility",
-                            value: "\(Int(round(visibility))) \(weatherService.useMetricSystem ? "km" : "mi")"
+                            value: "\(Int(round(visibility))) \(viewModel.useMetricSystem ? "km" : "mi")"
                         )
                     }
                     
@@ -162,7 +162,7 @@ struct WeatherView: View {
             
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 16) {
-                    ForEach(weatherService.hourlyForecast) { forecast in
+                    ForEach(viewModel.hourlyForecast) { forecast in
                         VStack(spacing: 8) {
                             // Time
                             Text(formatHour(forecast.timestamp))
@@ -173,7 +173,7 @@ struct WeatherView: View {
                             WeatherIcon(iconCode: forecast.icon, size: 40)
                             
                             // Temperature
-                            Text("\(Int(round(forecast.temperature)))°")
+                            Text("\(viewModel.formatTemperature(forecast.temperature))°")
                                 .font(Theme.Typography.body)
                                 .foregroundColor(.white)
                             
@@ -203,7 +203,7 @@ struct WeatherView: View {
                 .padding(.leading, 4)
             
             VStack(spacing: 12) {
-                ForEach(weatherService.dailyForecast) { forecast in
+                ForEach(viewModel.dailyForecast) { forecast in
                     HStack {
                         // Day of week
                         Text(formatDay(forecast.timestamp))
@@ -216,7 +216,7 @@ struct WeatherView: View {
                         
                         // Temperature range
                         if let high = forecast.highTemp, let low = forecast.lowTemp {
-                            Text("\(Int(round(low)))° - \(Int(round(high)))°")
+                            Text("\(viewModel.formatTemperature(low))° - \(viewModel.formatTemperature(high))°")
                                 .font(Theme.Typography.body)
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity, alignment: .trailing)
@@ -253,7 +253,7 @@ struct WeatherView: View {
     
     private func formatHour(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = weatherService.use24HourFormat ? "HH:mm" : "h a"
+        formatter.dateFormat = viewModel.use24HourFormat ? "HH:mm" : "h a"
         return formatter.string(from: date)
     }
     
@@ -287,5 +287,5 @@ struct WeatherView: View {
 }
 
 #Preview {
-    WeatherView(weatherService: WeatherService())
+    WeatherView(viewModel: WeatherViewModel())
 } 

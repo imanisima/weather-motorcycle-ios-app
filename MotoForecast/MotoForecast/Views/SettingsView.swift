@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @ObservedObject var weatherService: WeatherService
+    @ObservedObject var viewModel: WeatherViewModel
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
@@ -35,10 +35,13 @@ struct SettingsView: View {
                         // Units settings
                         WeatherCard(title: "Units") {
                             VStack(spacing: 16) {
-                                Toggle("Use Metric System", isOn: $weatherService.useMetricSystem)
+                                Toggle("Use Metric System", isOn: $viewModel.useMetricSystem)
                                     .foregroundColor(.white)
                                 
-                                Toggle("Use 24-Hour Format", isOn: $weatherService.use24HourFormat)
+                                Toggle("Use 24-Hour Format", isOn: $viewModel.use24HourFormat)
+                                    .foregroundColor(.white)
+                                
+                                Toggle("Use Celsius", isOn: $viewModel.useCelsius)
                                     .foregroundColor(.white)
                             }
                         }
@@ -99,5 +102,5 @@ struct SettingsView: View {
 }
 
 #Preview {
-    SettingsView(weatherService: WeatherService())
+    SettingsView(viewModel: WeatherViewModel())
 } 
