@@ -6,22 +6,22 @@ struct RidingConditionPill: View {
     private var backgroundColor: Color {
         switch condition {
         case .good:
-            return Color.green.opacity(0.3)
+            return Theme.Colors.goodRiding.opacity(0.15)
         case .moderate:
-            return Color.yellow.opacity(0.3)
+            return Theme.Colors.moderateRiding.opacity(0.15)
         case .unsafe:
-            return Color.red.opacity(0.3)
+            return Theme.Colors.unsafeRiding.opacity(0.15)
         }
     }
     
     private var textColor: Color {
         switch condition {
         case .good:
-            return .green
+            return Theme.Colors.goodRiding
         case .moderate:
-            return .yellow
+            return Theme.Colors.moderateRiding
         case .unsafe:
-            return .red
+            return Theme.Colors.unsafeRiding
         }
     }
     
@@ -42,7 +42,7 @@ struct RidingConditionPill: View {
                 .font(.system(size: 14, weight: .bold))
             
             Text(condition.rawValue)
-                .font(.subheadline.weight(.medium))
+                .font(Theme.Typography.subheadline)
         }
         .foregroundStyle(textColor)
         .padding(.horizontal, 12)
@@ -50,7 +50,7 @@ struct RidingConditionPill: View {
         .background(backgroundColor)
         .overlay(
             Capsule()
-                .strokeBorder(textColor.opacity(0.5), lineWidth: 1)
+                .strokeBorder(textColor.opacity(0.3), lineWidth: 1)
         )
         .clipShape(Capsule())
         .accessibilityElement(children: .combine)
@@ -60,11 +60,15 @@ struct RidingConditionPill: View {
 }
 
 #Preview {
-    HStack {
-        RidingConditionPill(condition: .good)
-        RidingConditionPill(condition: .moderate)
-        RidingConditionPill(condition: .unsafe)
+    ZStack {
+        Theme.Colors.background
+            .ignoresSafeArea()
+        
+        HStack(spacing: 16) {
+            RidingConditionPill(condition: .good)
+            RidingConditionPill(condition: .moderate)
+            RidingConditionPill(condition: .unsafe)
+        }
+        .padding()
     }
-    .padding()
-    .background(Color.black)
 } 

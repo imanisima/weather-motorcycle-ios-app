@@ -1,139 +1,146 @@
 import SwiftUI
 
 struct WeatherIcon: View {
-    let iconCode: String
+    let condition: String
+    let temperature: Double
+    let isDaytime: Bool
     let size: CGFloat
     
-    init(iconCode: String, size: CGFloat = 100) {
-        self.iconCode = iconCode
+    init(condition: String, temperature: Double, isDaytime: Bool, size: CGFloat = Theme.Layout.iconSize) {
+        self.condition = condition.lowercased()
+        self.temperature = temperature
+        self.isDaytime = isDaytime
         self.size = size
     }
     
+    private var systemName: String {
+        if condition.contains("clear") {
+            return isDaytime ? "sun.max.fill" : "moon.stars.fill"
+        } else if condition.contains("cloud") {
+            if condition.contains("partly") {
+                return isDaytime ? "cloud.sun.fill" : "cloud.moon.fill"
+            } else {
+                return "cloud.fill"
+            }
+        } else if condition.contains("rain") {
+            if condition.contains("thunder") {
+                return "cloud.bolt.rain.fill"
+            } else if condition.contains("light") {
+                return "cloud.drizzle.fill"
+            } else {
+                return "cloud.rain.fill"
+            }
+        } else if condition.contains("snow") {
+            return "cloud.snow.fill"
+        } else if condition.contains("sleet") {
+            return "cloud.sleet.fill"
+        } else if condition.contains("fog") || condition.contains("mist") {
+            return "cloud.fog.fill"
+        } else if condition.contains("wind") {
+            return "wind"
+        } else {
+            return "questionmark.diamond.fill"
+        }
+    }
+    
+    private var iconColor: Color {
+        if condition.contains("clear") {
+            return isDaytime ? .yellow : .gray
+        } else if condition.contains("cloud") {
+            return .gray
+        } else if condition.contains("rain") {
+            return .blue
+        } else if condition.contains("snow") || condition.contains("sleet") {
+            return .white
+        } else if condition.contains("fog") || condition.contains("mist") {
+            return .gray
+        } else if condition.contains("wind") {
+            return Theme.Colors.accent
+        } else {
+            return Theme.Colors.accent
+        }
+    }
+    
+    private var animationDuration: Double {
+        switch true {
+        case condition.contains("clear"):
+            return 2.0 // Sun/Moon pulse
+        case condition.contains("cloud"):
+            return 3.0 // Gentle cloud pulse
+        case condition.contains("rain"):
+            return 1.0 // Quick rain pulse
+        case condition.contains("thunder"):
+            return 0.5 // Fast thunder bounce
+        case condition.contains("snow"):
+            return 2.0 // Soft snow pulse
+        case condition.contains("fog"):
+            return 4.0 // Slow fog fade
+        default:
+            return 2.0
+        }
+    }
+    
     var body: some View {
-        ZStack {
-            // Base weather icon
-            baseWeatherIcon
-                .font(.system(size: size))
-                .foregroundColor(.white)
-            
-            // Motorcycle overlay
-            motorcycleOverlay
-                .font(.system(size: size * 0.6))
-                .foregroundColor(Theme.Colors.accent)
-                .offset(y: size * 0.1)
-        }
-    }
-    
-    @ViewBuilder
-    private var baseWeatherIcon: some View {
-        switch iconCode.prefix(2) {
-        case "01": // Clear sky
-            Image(systemName: "sun.max.fill")
-        case "02": // Few clouds
-            Image(systemName: "cloud.sun.fill")
-        case "03": // Scattered clouds
-            Image(systemName: "cloud.fill")
-        case "04": // Broken clouds
-            Image(systemName: "cloud.fill")
-        case "09": // Shower rain
-            Image(systemName: "cloud.rain.fill")
-        case "10": // Rain
-            Image(systemName: "cloud.rain.fill")
-        case "11": // Thunderstorm
-            Image(systemName: "cloud.bolt.fill")
-        case "13": // Snow
-            Image(systemName: "cloud.snow.fill")
-        case "50": // Mist, fog
-            Image(systemName: "cloud.fog.fill")
-        default:
-            Image(systemName: "questionmark.circle.fill")
-        }
-    }
-    
-    @ViewBuilder
-    private var motorcycleOverlay: some View {
-        // Motorcycle icon overlay based on weather condition
-        switch iconCode.prefix(2) {
-        case "01": // Clear sky - motorcycle with sun
-            Image(systemName: "figure.motorcycle")
-        case "02", "03", "04": // Clouds - motorcycle with clouds
-            Image(systemName: "figure.motorcycle")
-        case "09", "10": // Rain - motorcycle with rain
-            Image(systemName: "figure.motorcycle")
-        case "11": // Thunderstorm - motorcycle with lightning
-            Image(systemName: "figure.motorcycle")
-        case "13": // Snow - motorcycle with snow
-            Image(systemName: "figure.motorcycle")
-        case "50": // Mist, fog - motorcycle with fog
-            Image(systemName: "figure.motorcycle")
-        default:
-            Image(systemName: "figure.motorcycle")
-        }
+        Image(systemName: systemName)
+            .font(.system(size: size))
+            .foregroundStyle(iconColor)
+            .symbolRenderingMode(.multicolor)
+            .accessibilityLabel(condition)
+            .animation(.easeInOut(duration: animationDuration).repeatForever(), value: condition)
     }
 }
 
-struct WeatherIconWithCondition: View {
-    let iconCode: String
-    let condition: RidingCondition
-    let size: CGFloat
-    
-    init(iconCode: String, condition: RidingCondition, size: CGFloat = 100) {
-        self.iconCode = iconCode
-        self.condition = condition
-        self.size = size
-    }
+struct WeatherIconRow: View {
+    let condition: String
+    let temperature: Double
+    let isDaytime: Bool
+    let title: String
+    let subtitle: String?
     
     var body: some View {
-        VStack(spacing: 8) {
-            WeatherIcon(iconCode: iconCode, size: size)
+        HStack(spacing: 16) {
+            WeatherIcon(condition: condition, temperature: temperature, isDaytime: isDaytime)
+                .frame(width: Theme.Layout.iconSize, height: Theme.Layout.iconSize)
             
-            // Riding condition indicator
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(colorForCondition)
-                    .frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(Theme.Typography.body)
+                    .foregroundStyle(Theme.Colors.primaryText)
                 
-                Text(condition.rawValue)
-                    .font(Theme.Typography.caption)
-                    .foregroundColor(.white)
+                if let subtitle = subtitle {
+                    Text(subtitle)
+                        .font(Theme.Typography.footnote)
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                }
             }
-            .padding(.vertical, 4)
-            .padding(.horizontal, 8)
-            .background(
-                Capsule()
-                    .fill(Theme.Colors.asphalt.opacity(0.5))
-            )
         }
-    }
-    
-    private var colorForCondition: Color {
-        switch condition {
-        case .good:
-            return Theme.Colors.goodRiding
-        case .moderate:
-            return Theme.Colors.moderateRiding
-        case .unsafe:
-            return Theme.Colors.unsafeRiding
-        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 16)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius)
+                .fill(Theme.Colors.secondaryBackground)
+        )
     }
 }
 
 #Preview {
     ZStack {
-        Theme.Colors.asphalt.ignoresSafeArea()
+        Theme.Colors.background
+            .ignoresSafeArea()
         
-        VStack(spacing: 30) {
-            HStack(spacing: 20) {
-                WeatherIcon(iconCode: "01d", size: 80)
-                WeatherIcon(iconCode: "10d", size: 80)
-                WeatherIcon(iconCode: "11d", size: 80)
-            }
+        VStack(spacing: 20) {
+            WeatherIcon(condition: "clear", temperature: 75, isDaytime: true, size: 50)
+            WeatherIcon(condition: "partly cloudy", temperature: 65, isDaytime: false, size: 50)
+            WeatherIcon(condition: "rain", temperature: 55, isDaytime: true, size: 50)
+            WeatherIcon(condition: "snow", temperature: 30, isDaytime: true, size: 50)
             
-            HStack(spacing: 20) {
-                WeatherIconWithCondition(iconCode: "01d", condition: .good, size: 80)
-                WeatherIconWithCondition(iconCode: "10d", condition: .moderate, size: 80)
-                WeatherIconWithCondition(iconCode: "11d", condition: .unsafe, size: 80)
-            }
+            WeatherIconRow(
+                condition: "partly cloudy",
+                temperature: 72,
+                isDaytime: true,
+                title: "Partly Cloudy",
+                subtitle: "Clearing up soon"
+            )
         }
         .padding()
     }

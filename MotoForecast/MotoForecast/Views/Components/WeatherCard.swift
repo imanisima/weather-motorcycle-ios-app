@@ -2,26 +2,35 @@ import SwiftUI
 
 struct WeatherCard<Content: View>: View {
     let title: String
-    let content: Content
+    let content: () -> Content
     
-    init(title: String, @ViewBuilder content: () -> Content) {
+    init(title: String, @ViewBuilder content: @escaping () -> Content) {
         self.title = title
-        self.content = content()
+        self.content = content
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Layout.cardSpacing) {
-            Text(title)
-                .font(Theme.Typography.headline)
-                .foregroundColor(.white)
+        VStack(alignment: .leading, spacing: 12) {
+            if !title.isEmpty {
+                Text(title)
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Colors.primaryText)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
+            }
             
-            content
+            content()
+                .padding(.horizontal, 16)
+                .padding(.bottom, title.isEmpty ? 16 : 12)
         }
-        .padding(Theme.Layout.cardPadding)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Layout.cardCornerRadius)
-                .fill(Theme.Colors.asphalt.opacity(0.7))
-                .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 5)
+        .frame(maxWidth: .infinity)
+        .background(Theme.Colors.cardGradient)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius))
+        .shadow(
+            color: Theme.Layout.cardShadow.color,
+            radius: Theme.Layout.cardShadow.radius,
+            x: Theme.Layout.cardShadow.x,
+            y: Theme.Layout.cardShadow.y
         )
     }
 }
@@ -35,18 +44,18 @@ struct WeatherInfoRow: View {
         HStack {
             Image(systemName: icon)
                 .font(.system(size: Theme.Layout.iconSize))
-                .foregroundColor(Theme.Colors.accent)
+                .foregroundStyle(Theme.Colors.accent)
                 .frame(width: 30)
             
             Text(title)
                 .font(Theme.Typography.body)
-                .foregroundColor(.white.opacity(0.8))
+                .foregroundStyle(Theme.Colors.secondaryText)
             
             Spacer()
             
             Text(value)
                 .font(Theme.Typography.body)
-                .foregroundColor(.white)
+                .foregroundStyle(Theme.Colors.primaryText)
                 .bold()
         }
     }
@@ -63,13 +72,13 @@ struct RidingConditionIndicator: View {
             
             Text(condition.rawValue)
                 .font(Theme.Typography.headline)
-                .foregroundColor(.white)
+                .foregroundStyle(Theme.Colors.primaryText)
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 16)
         .background(
             RoundedRectangle(cornerRadius: 20)
-                .fill(Theme.Colors.asphalt.opacity(0.5))
+                .fill(Theme.Colors.secondaryBackground)
         )
     }
     
@@ -87,40 +96,18 @@ struct RidingConditionIndicator: View {
 
 #Preview {
     ZStack {
-        Theme.Colors.asphalt.ignoresSafeArea()
+        Theme.Colors.background
+            .ignoresSafeArea()
         
-        VStack(spacing: 20) {
-            WeatherCard(title: "Current Weather") {
-                VStack(spacing: 16) {
-                    WeatherInfoRow(
-                        icon: "thermometer",
-                        title: "Temperature",
-                        value: "24°C"
-                    )
-                    
-                    WeatherInfoRow(
-                        icon: "wind",
-                        title: "Wind Speed",
-                        value: "12 km/h"
-                    )
-                    
-                    WeatherInfoRow(
-                        icon: "humidity",
-                        title: "Humidity",
-                        value: "65%"
-                    )
-                }
-            }
-            
-            WeatherCard(title: "Riding Conditions") {
-                VStack(spacing: 16) {
-                    RidingConditionIndicator(condition: .good)
-                    
-                    Text("Perfect conditions for riding! Enjoy the open road.")
-                        .font(Theme.Typography.body)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                }
+        WeatherCard(title: "Current Conditions") {
+            HStack {
+                Image(systemName: "thermometer")
+                    .foregroundStyle(Theme.Colors.accent)
+                Text("72°")
+                    .foregroundStyle(Theme.Colors.primaryText)
+                Spacer()
+                Text("Feels great!")
+                    .foregroundStyle(Theme.Colors.secondaryText)
             }
         }
         .padding()

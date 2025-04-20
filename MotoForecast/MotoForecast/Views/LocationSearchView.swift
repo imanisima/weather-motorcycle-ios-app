@@ -2,248 +2,120 @@ import SwiftUI
 
 struct LocationSearchView: View {
     @ObservedObject var viewModel: WeatherViewModel
-    @Environment(\.dismiss) private var dismiss
-    @State private var searchText = ""
-    @State private var searchResults: [Location] = []
-    @State private var searchError: LocationSearchError?
-    @State private var isSearching = false
+    @Environment(\.dismiss) var dismiss
+    @FocusState private var isSearchFocused: Bool
     
     var body: some View {
-        ZStack {
-            Theme.Colors.asphalt.ignoresSafeArea()
-            
-            VStack(spacing: 0) {
-                searchHeader
+        NavigationView {
+            ZStack {
+                Theme.Colors.background
+                    .ignoresSafeArea()
                 
-                if isSearching {
-                    ProgressView()
-                        .scaleEffect(1.5)
-                        .padding()
-                } else if let error = searchError {
-                    errorView(error)
-                } else if searchResults.isEmpty && !searchText.isEmpty {
-                    emptyResultsView
-                } else if searchResults.isEmpty {
-                    recentLocationsView
-                } else {
-                    searchResultsList
+                VStack(spacing: 0) {
+                    searchBar
+                    
+                    if viewModel.searchResults.isEmpty && !viewModel.searchQuery.isEmpty {
+                        emptyStateView
+                    } else {
+                        searchResultsList
+                    }
+                }
+            }
+            .navigationTitle("Search Location")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
                 }
             }
         }
-        .navigationBarHidden(true)
     }
     
-    private var searchHeader: some View {
-        VStack(spacing: 16) {
-            HStack {
-                Button(action: { dismiss() }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: Theme.Layout.iconSize))
-                        .foregroundColor(.white)
-                }
-                
-                Text("Search Location")
-                    .font(Theme.Typography.title2)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                
-                Image(systemName: "xmark")
-                    .font(.system(size: Theme.Layout.iconSize))
-                    .foregroundColor(.clear)
-            }
+    private var searchBar: some View {
+        HStack {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(Theme.Colors.accent)
             
-            HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.white.opacity(0.7))
-                
-                TextField("Enter city name", text: $searchText)
-                    .font(Theme.Typography.body)
-                    .foregroundColor(.white)
-                    .autocapitalization(.none)
-                    .disableAutocorrection(true)
-                    .onChange(of: searchText) { oldValue, newValue in
-                        searchLocations()
-                    }
-                
-                if !searchText.isEmpty {
-                    Button(action: { searchText = "" }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.white.opacity(0.7))
+            TextField("Search for a city", text: $viewModel.searchQuery)
+                .textFieldStyle(.plain)
+                .foregroundStyle(Theme.Colors.primaryText)
+                .focused($isSearchFocused)
+                .submitLabel(.search)
+                .onSubmit {
+                    Task {
+                        await viewModel.searchLocations(viewModel.searchQuery)
                     }
                 }
+            
+            if !viewModel.searchQuery.isEmpty {
+                Button {
+                    viewModel.searchQuery = ""
+                    viewModel.searchResults = []
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                }
             }
-            .padding()
-            .background(Theme.Colors.darkGray.opacity(0.5))
-            .cornerRadius(12)
         }
         .padding()
-        .background(Theme.Colors.asphalt.opacity(0.7))
+        .background(Theme.Colors.secondaryBackground)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius))
+        .padding()
     }
     
     private var searchResultsList: some View {
         ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(searchResults) { location in
-                    Button(action: {
-                        selectLocation(location)
-                    }) {
-                        LocationRow(location: location)
-                    }
-                    
-                    if location.id != searchResults.last?.id {
-                        Divider()
-                            .background(Color.white.opacity(0.2))
-                    }
-                }
-            }
-        }
-    }
-    
-    private var recentLocationsView: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Recent Locations")
-                .font(Theme.Typography.title3)
-                .foregroundColor(.white)
-                .padding(.horizontal)
-            
-            if viewModel.recentLocations.isEmpty {
-                Text("No recent locations")
-                    .font(Theme.Typography.body)
-                    .foregroundColor(.white.opacity(0.7))
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding()
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(viewModel.recentLocations) { recent in
-                            Button(action: {
-                                selectLocation(recent.location)
-                            }) {
-                                RecentLocationRow(recent: recent)
+            LazyVStack(spacing: 12) {
+                ForEach(viewModel.searchResults) { location in
+                    Button {
+                        Task {
+                            await viewModel.selectLocation(location)
+                            dismiss()
+                        }
+                    } label: {
+                        HStack {
+        VStack(alignment: .leading, spacing: 4) {
+                                Text(location.name)
+                                    .font(Theme.Typography.body)
+                                    .foregroundStyle(Theme.Colors.primaryText)
+                                
+                                Text("\(location.state ?? ""), \(location.country)")
+                                    .font(Theme.Typography.footnote)
+                                    .foregroundStyle(Theme.Colors.secondaryText)
                             }
                             
-                            if recent.id != viewModel.recentLocations.last?.id {
-                                Divider()
-                                    .background(Color.white.opacity(0.2))
-                            }
+                            Spacer()
+                            
+                            Image(systemName: "chevron.right")
+                                .foregroundStyle(Theme.Colors.accent)
                         }
+                        .padding()
+                        .background(Theme.Colors.secondaryBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius))
                     }
                 }
             }
+            .padding(.horizontal)
         }
-        .padding(.top)
     }
     
-    private func errorView(_ error: LocationSearchError) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 50))
-                .foregroundColor(Theme.Colors.unsafeRiding)
-            
-            Text(error.localizedDescription)
-                .font(Theme.Typography.body)
-                .foregroundColor(.white)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            
-            Button(action: { searchText = "" }) {
-                Text("Try Again")
-                    .font(Theme.Typography.headline)
-                    .foregroundColor(.white)
-                    .padding()
-                    .background(Theme.Colors.accent)
-                    .cornerRadius(12)
-            }
-        }
-        .padding()
-    }
-    
-    private var emptyResultsView: some View {
+    private var emptyStateView: some View {
         VStack(spacing: 16) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 50))
-                .foregroundColor(.white.opacity(0.7))
+                .font(.system(size: 48))
+                .foregroundStyle(Theme.Colors.accent)
             
             Text("No locations found")
                 .font(Theme.Typography.title3)
-                .foregroundColor(.white)
+                .foregroundStyle(Theme.Colors.primaryText)
             
-            Text("Try a different search term")
+            Text("Try searching for a different city")
                 .font(Theme.Typography.body)
-                .foregroundColor(.white.opacity(0.7))
+                .foregroundStyle(Theme.Colors.secondaryText)
         }
-        .padding()
-    }
-    
-    private func searchLocations() {
-        Task {
-        isSearching = true
-            let result = await viewModel.searchLocations(searchText)
-            searchResults = result.locations
-            searchError = result.error
-        isSearching = false
-        }
-    }
-    
-    private func selectLocation(_ location: Location) {
-        Task {
-            await viewModel.selectLocation(location)
-            dismiss()
-        }
-    }
-}
-
-private struct LocationRow: View {
-    let location: Location
-    
-    var body: some View {
-        HStack {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(location.city)
-                    .font(Theme.Typography.body)
-                    .foregroundColor(.white)
-            
-            if let state = location.state {
-                Text("\(state), \(location.country)")
-                        .font(Theme.Typography.caption)
-                        .foregroundColor(.white.opacity(0.7))
-            } else {
-                Text(location.country)
-                        .font(Theme.Typography.caption)
-                        .foregroundColor(.white.opacity(0.7))
-                }
-            }
-            
-            Spacer()
-            
-            Image(systemName: "chevron.right")
-                .foregroundColor(.white.opacity(0.5))
-        }
-        .padding()
-    }
-}
-
-private struct RecentLocationRow: View {
-    let recent: RecentLocation
-    
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(recent.location.city)
-                    .font(Theme.Typography.body)
-                    .foregroundColor(.white)
-                
-                Text("\(Int(round(recent.temperature)))° • H: \(Int(round(recent.highTemp)))° L: \(Int(round(recent.lowTemp)))°")
-                    .font(Theme.Typography.caption)
-                    .foregroundColor(.white.opacity(0.7))
-            }
-            
-            Spacer()
-            
-            Image(systemName: "chevron.right")
-                .foregroundColor(.white.opacity(0.5))
-        }
-        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

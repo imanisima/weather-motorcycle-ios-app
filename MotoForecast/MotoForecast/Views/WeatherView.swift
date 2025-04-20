@@ -23,7 +23,7 @@ struct WeatherView: View {
                 // Semi-transparent overlay for better text contrast
                 Color.black.opacity(0.2)
                     .ignoresSafeArea()
-
+                
                 ScrollView {
                     VStack(spacing: Theme.Layout.cardSpacing) {
                         // Location header
@@ -57,24 +57,24 @@ struct WeatherView: View {
     }
     
     private func locationHeader(_ location: Location) -> some View {
-        HStack {
-            Button(action: { showingLocationSearch = true }) {
+                                HStack {
+                                    Button(action: { showingLocationSearch = true }) {
                 HStack {
                     Image(systemName: "location.fill")
                         .foregroundColor(Theme.Colors.accent)
                     
                     Text(location.city)
                         .font(Theme.Typography.title2)
-                        .foregroundColor(.white)
+                                            .foregroundColor(.white)
                 }
-            }
-            
-            Spacer()
-            
-            Button(action: { showingSettings = true }) {
-                Image(systemName: "gear")
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    Button(action: { showingSettings = true }) {
+                                        Image(systemName: "gear")
                     .font(.system(size: Theme.Layout.iconSize))
-                    .foregroundColor(.white)
+                                            .foregroundColor(.white)
             }
         }
         .padding(.vertical, 8)
@@ -82,118 +82,141 @@ struct WeatherView: View {
     
     private func currentWeatherSection(_ weather: WeatherData) -> some View {
         VStack(spacing: Theme.Layout.cardSpacing) {
-            // Temperature Header
-            HStack(alignment: .top) {
-                VStack(alignment: .leading) {
-                    Text("\(viewModel.formatTemperature(weather.temperature))°")
-                        .font(Theme.Typography.temperature)
-                        .foregroundStyle(.white)
-                    
-                    TemperatureUnitToggle(viewModel: viewModel, fontSize: 24)
-                }
+            temperatureHeaderView(weather)
+            weatherDescriptionView(weather)
+            currentRidingConditionView(weather)
+            if !viewModel.hourlyForecast.isEmpty {
+                hourlyForecastView
+            }
+            weatherStatsView(weather)
+            ridersOverviewView(weather)
+        }
+    }
+    
+    private func temperatureHeaderView(_ weather: WeatherData) -> some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading) {
+                Text("\(viewModel.formatTemperature(weather.temperature))°")
+                    .font(Theme.Typography.temperature)
+                    .foregroundStyle(.white)
+                
+                TemperatureUnitToggle(viewModel: viewModel, fontSize: 24)
+            }
+            
+            Spacer()
+            
+            AnimatedWeatherIcon(iconCode: weather.icon, size: 120)
+        }
+        .padding(.horizontal, 16)
+    }
+    
+    private func weatherDescriptionView(_ weather: WeatherData) -> some View {
+        Text(weather.description.capitalized)
+            .font(.title2.weight(.medium))
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 12)
+            .background(.ultraThinMaterial)
+            .cornerRadius(12)
+    }
+    
+    private func currentRidingConditionView(_ weather: WeatherData) -> some View {
+        WeatherCard(title: "") {
+            HStack {
+                Image(systemName: "bicycle")
+                    .font(.system(size: Theme.Layout.iconSize))
+                    .foregroundStyle(.white)
+                    .symbolEffect(.bounce, options: .repeating)
+                
+                Text("Current Riding Condition")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.white)
                 
                 Spacer()
                 
-                // Animated weather icon
-                AnimatedWeatherIcon(iconCode: weather.icon, size: 120)
+                RidingConditionPill(condition: weather.ridingCondition)
             }
-            .padding(.horizontal, 16)
-            
-            // Weather description
-            Text(weather.description.capitalized)
-                .font(.title2.weight(.medium))
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Current riding conditions are \(weather.ridingCondition.rawValue)")
+    }
+    
+    private var hourlyForecastView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Hourly Forecast")
+                .font(.title3.weight(.semibold))
                 .foregroundStyle(.white)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.vertical, 12)
-                .background(.ultraThinMaterial)
-                .cornerRadius(12)
-
-            // Current Riding Condition
-            WeatherCard(title: "") {
-                HStack {
-                    Image(systemName: "bicycle")
-                        .font(.system(size: Theme.Layout.iconSize))
-                        .foregroundStyle(.white)
-                        .symbolEffect(.bounce, options: .repeating)
-                    
-                    Text("Current Riding Condition")
-                        .font(.body.weight(.medium))
-                        .foregroundStyle(.white)
-                    
-                    Spacer()
-                    
-                    RidingConditionPill(condition: weather.ridingCondition)
-                }
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Current riding conditions are \(weather.ridingCondition.rawValue)")
+                .padding(.leading, 4)
             
-            // Hourly forecast
-            if !viewModel.hourlyForecast.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Hourly Forecast")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(.leading, 4)
-                    
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 16) {
-                            ForEach(viewModel.hourlyForecast) { forecast in
-                                NavigationLink(destination: HourlyForecastDetailView(forecast: forecast, viewModel: viewModel)) {
-                                    VStack(spacing: 12) {
-                                        // Time
-                                        Text(formatHour(forecast.timestamp))
-                                            .font(.subheadline.weight(.medium))
-                                            .foregroundStyle(.white)
-                                        
-                                        // Weather icon
-                                        Image(systemName: getWeatherSymbol(for: forecast.icon))
-                                            .symbolRenderingMode(.multicolor)
-                                            .font(.system(size: 32))
-                                            .accessibilityLabel(forecast.description)
-                                        
-                                        // Temperature
-                                        Text("\(viewModel.formatTemperature(forecast.temperature))°")
-                                            .font(.body.weight(.semibold))
-                                            .foregroundStyle(.white)
-                                        
-                                        if forecast.precipitation > 0 {
-                                            HStack(spacing: 4) {
-                                                Image(systemName: "drop.fill")
-                                                    .foregroundStyle(.blue)
-                                                Text("\(Int(round(forecast.precipitation)))%")
-                                                    .foregroundStyle(.white)
-                                            }
-                                            .font(.caption.weight(.medium))
-                                        }
-                                        
-                                        // Riding condition indicator
-                                        Circle()
-                                            .fill(colorForCondition(forecast.ridingCondition))
-                                            .frame(width: 8, height: 8)
-                                    }
-                                    .frame(width: 70)
-                                    .padding(.vertical, 12)
-                                    .background(.ultraThinMaterial)
-                                    .cornerRadius(12)
-                                }
-                                .accessibilityElement(children: .combine)
-                                .accessibilityLabel("Forecast for \(formatHour(forecast.timestamp)): \(forecast.description), \(viewModel.formatTemperature(forecast.temperature))°, \(forecast.ridingCondition.rawValue) riding conditions")
-                            }
-                        }
-                        .padding(.horizontal, 4)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 16) {
+                    ForEach(Array(viewModel.hourlyForecast.enumerated()), id: \.element.id) { _, forecast in
+                        hourlyForecastItemView(forecast)
                     }
                 }
-                .padding(.vertical, 16)
+                .padding(.horizontal, 4)
             }
-
-            // Weather Stats Card
-            WeatherCard(title: "Weather Stats") {
-                VStack(spacing: 16) {
-                    LazyVGrid(columns: [
-                        GridItem(.flexible()),
-                        GridItem(.flexible())
-                    ], spacing: 20) {
+        }
+        .padding(.vertical, 16)
+    }
+    
+    private func hourlyForecastItemView(_ forecast: WeatherData) -> some View {
+        NavigationLink {
+            HourlyForecastDetailView(
+                forecast: forecast,
+                viewModel: viewModel
+            )
+        } label: {
+            VStack(spacing: 12) {
+                Text(formatHour(forecast.timestamp))
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white)
+                
+                Image(systemName: getWeatherSymbol(for: forecast.icon))
+                    .symbolRenderingMode(.multicolor)
+                    .font(.system(size: 32))
+                    .accessibilityLabel(forecast.description)
+                
+                Text("\(viewModel.formatTemperature(forecast.temperature))°")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.white)
+                
+                if forecast.precipitation > 0 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "drop.fill")
+                            .foregroundStyle(.blue)
+                        Text("\(Int(round(forecast.precipitation)))%")
+                            .foregroundStyle(.white)
+                    }
+                    .font(.caption.weight(.medium))
+                }
+                
+                Circle()
+                    .fill(colorForCondition(forecast.ridingCondition))
+                    .frame(width: 8, height: 8)
+            }
+            .frame(width: 70)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius)
+                    .fill(Theme.Colors.secondaryBackground)
+            )
+            .cornerRadius(12)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Forecast for \(formatHour(forecast.timestamp)): \(forecast.description), \(viewModel.formatTemperature(forecast.temperature))°, \(forecast.ridingCondition.rawValue) riding conditions")
+    }
+    
+    private func weatherStatsView(_ weather: WeatherData) -> some View {
+        WeatherCard(title: "Weather Stats") {
+            VStack(spacing: 16) {
+                let columns = [
+                    GridItem(.flexible()),
+                    GridItem(.flexible())
+                ]
+                
+                LazyVGrid(columns: columns, spacing: 20) {
+                    Group {
                         WeatherStatItem(
                             icon: "thermometer",
                             label: "Feels Like",
@@ -215,126 +238,139 @@ struct WeatherView: View {
                             value: weather.visibilityCondition.rawValue
                         )
                     }
-                    .padding(.vertical, 8)
+                }
+                .padding(.vertical, 8)
+            }
+        }
+    }
+    
+    private func ridersOverviewView(_ weather: WeatherData) -> some View {
+        WeatherCard(title: "Riders Overview") {
+            VStack(spacing: 24) {
+                currentRidingStatusView(weather)
+                
+                Divider()
+                    .background(Color.white.opacity(0.2))
+
+                let safeWindow = findSafeRidingWindow()
+                let dailyOutlook = getDailyOutlook()
+                
+                if let (start, end) = safeWindow {
+                    recommendedWindowView(start: start, end: end)
+                }
+                
+                if dailyOutlook.rating.contains("Caution") {
+                    cautionView
                 }
             }
-
-            // Riding Overview Section
-            WeatherCard(title: "Riders Overview") {
-                VStack(spacing: 24) {
-                    // Can I go riding now?
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Can I go riding right now?")
-                            .font(Theme.Typography.title2)
-                            .foregroundColor(.white)
+        }
+    }
+    
+    private func currentRidingStatusView(_ weather: WeatherData) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Can I go riding right now?")
+                .font(Theme.Typography.title2)
+                .foregroundColor(.white)
+            
+            HStack(spacing: 12) {
+                Image(systemName: weather.ridingCondition == .good ? "checkmark.circle.fill" : 
+                               weather.ridingCondition == .moderate ? "exclamationmark.triangle.fill" : 
+                               "xmark.circle.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(weather.ridingCondition == .good ? .green :
+                                   weather.ridingCondition == .moderate ? .yellow :
+                                   .red)
+                
+                Text(weather.ridingCondition == .good ? "Yes! Conditions are great" :
+                     weather.ridingCondition == .moderate ? "Yes, but be cautious" :
+                     "Not recommended")
+                    .font(Theme.Typography.headline)
+                    .foregroundColor(.white)
+            }
+            
+            Text("Current factors:")
+                .font(Theme.Typography.subheadline)
+                .foregroundColor(.white.opacity(0.7))
+            
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(getRatingExplanation(for: weather), id: \.self) { point in
+                    HStack(alignment: .top, spacing: 8) {
+                        Circle()
+                            .fill(Theme.Colors.accent)
+                            .frame(width: 6, height: 6)
+                            .padding(.top, 6)
                         
-                        HStack(spacing: 12) {
-                            Image(systemName: weather.ridingCondition == .good ? "checkmark.circle.fill" : 
-                                           weather.ridingCondition == .moderate ? "exclamationmark.triangle.fill" : 
-                                           "xmark.circle.fill")
-                                .font(.system(size: 24))
-                                .foregroundColor(weather.ridingCondition == .good ? .green :
-                                               weather.ridingCondition == .moderate ? .yellow :
-                                               .red)
-                            
-                            Text(weather.ridingCondition == .good ? "Yes! Conditions are great" :
-                                 weather.ridingCondition == .moderate ? "Yes, but be cautious" :
-                                 "Not recommended")
-                                .font(Theme.Typography.headline)
-                                .foregroundColor(.white)
-                        }
-                        
-                        // Current factors
-                        Text("Current factors:")
-                            .font(Theme.Typography.subheadline)
-                            .foregroundColor(.white.opacity(0.7))
-                        
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(getRatingExplanation(for: weather), id: \.self) { point in
-                                HStack(alignment: .top, spacing: 8) {
-                                    Circle()
-                                        .fill(Theme.Colors.accent)
-                                        .frame(width: 6, height: 6)
-                                        .padding(.top, 6)
-                                    
-                                    Text(point)
-                                        .font(Theme.Typography.body)
-                                        .foregroundColor(.white.opacity(0.9))
-                                }
-                            }
-                        }
+                        Text(point)
+                            .font(Theme.Typography.body)
+                            .foregroundColor(.white.opacity(0.9))
                     }
-                    
-                    Divider()
-                        .background(Color.white.opacity(0.2))
-
-                    let safeWindow = findSafeRidingWindow()
-                    let dailyOutlook = getDailyOutlook()
-                    
-                    // Recommended window
-                    if let (start, end) = safeWindow {
-                        let isNextDay = Calendar.current.isDate(end, inSameDayAs: start) == false
+                }
+            }
+        }
+    }
+    
+    private func recommendedWindowView(start: Date, end: Date) -> some View {
+        let isNextDay = Calendar.current.isDate(end, inSameDayAs: start) == false
+        
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "clock.fill")
+                    .foregroundColor(Theme.Colors.accent)
+                Text("Recommended window:")
+                    .font(Theme.Typography.subheadline)
+                    .foregroundColor(.white.opacity(0.7))
+            }
+            
+            Text("\(formatHour(start)) - \(formatHour(end))")
+                .font(Theme.Typography.title)
+                .foregroundColor(.green)
+            
+            if isNextDay {
+                Text("(extends into tomorrow)")
+                    .font(Theme.Typography.caption)
+                    .foregroundColor(.green.opacity(0.8))
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius)
+                .fill(Theme.Colors.secondaryBackground)
+        )
+    }
+    
+    private var cautionView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(.yellow)
+                
+                Text("Use Caution Today")
+                    .font(Theme.Typography.title3)
+                    .foregroundColor(.yellow)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius)
+                    .fill(Theme.Colors.secondaryBackground)
+            )
+            
+            Text("Why exercise caution:")
+                .font(Theme.Typography.subheadline)
+                .foregroundColor(.white.opacity(0.8))
+            
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(getCautionReasons(), id: \.self) { reason in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(.yellow)
+                            .padding(.top, 4)
                         
-                        VStack(alignment: .leading, spacing: 12) {
-                                HStack {
-                                Image(systemName: "clock.fill")
-                                    .foregroundColor(Theme.Colors.accent)
-                                Text("Recommended window:")
-                                    .font(Theme.Typography.subheadline)
-                                    .foregroundColor(.white.opacity(0.7))
-                            }
-                            
-                            Text("\(formatHour(start)) - \(formatHour(end))")
-                                .font(Theme.Typography.title)
-                                .foregroundColor(.green)
-                            
-                            if isNextDay {
-                                Text("(extends into tomorrow)")
-                                    .font(Theme.Typography.caption)
-                                    .foregroundColor(.green.opacity(0.8))
-                            }
-                        }
-                    }
-                    
-                    // Caution section if needed
-                    if dailyOutlook.rating.contains("Caution") {
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(.yellow)
-                                
-                                Text("Use Caution Today")
-                                    .font(Theme.Typography.title3)
-                                    .foregroundColor(.yellow)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, 8)
-                            .padding(.horizontal, 12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(Color.yellow.opacity(0.2))
-                            )
-                            
-                            Text("Why exercise caution:")
-                                .font(Theme.Typography.subheadline)
-                                .foregroundColor(.white.opacity(0.8))
-                            
-                            VStack(alignment: .leading, spacing: 8) {
-                                ForEach(getCautionReasons(), id: \.self) { reason in
-                                    HStack(alignment: .top, spacing: 8) {
-                                        Image(systemName: "exclamationmark.circle.fill")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(.yellow)
-                                            .padding(.top, 4)
-                                        
-                                        Text(reason)
-                                            .font(Theme.Typography.body)
-                                            .foregroundColor(.white.opacity(0.9))
-                                    }
-                                }
-                            }
-                        }
+                        Text(reason)
+                            .font(Theme.Typography.body)
+                            .foregroundColor(.white.opacity(0.9))
                     }
                 }
             }
@@ -349,78 +385,104 @@ struct WeatherView: View {
                 .padding(.leading, 4)
             
             let bestDay = viewModel.dailyForecast.max(by: { $0.ridingConfidence < $1.ridingConfidence })
-                                
-                                VStack(spacing: 12) {
-                ForEach(viewModel.dailyForecast) { forecast in
-                    NavigationLink(destination: DailyForecastDetailView(forecast: forecast, viewModel: viewModel)) {
-                        VStack(spacing: 8) {
-                                        HStack {
-                                // Day of week
-                                Text(formatDay(forecast.timestamp))
-                                    .font(Theme.Typography.body)
-                                    .foregroundColor(.white)
-                                                .frame(width: 100, alignment: .leading)
-                                            
-                                // Weather icon and temperature range
-                                HStack(spacing: 12) {
-                                    WeatherIcon(iconCode: forecast.icon, size: 30)
-                                    
-                                    if let high = forecast.highTemp, let low = forecast.lowTemp {
-                                        Text("H: \(viewModel.formatTemperature(high))° L: \(viewModel.formatTemperature(low))°")
-                                            .font(Theme.Typography.body)
-                                        .foregroundColor(.white)
-                                    }
-                                }
-                                .frame(maxWidth: .infinity)
-                                
-                                // Ride rating with icon
-                                HStack(spacing: 4) {
-                                    Image(systemName: forecast.rideRating.icon)
-                                        .foregroundColor(forecast.rideRating.color)
-                                    Text(forecast.rideRating.rawValue)
-                                        .font(Theme.Typography.caption)
-                                        .foregroundColor(forecast.rideRating.color)
-                                }
-                                .frame(width: 120, alignment: .trailing)
-                            }
-                            
-                            // Weather summary
-                            Text(forecast.weatherSummary)
-                                .font(Theme.Typography.caption)
-                                .foregroundColor(.white.opacity(0.8))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 4)
-                            
-                            // Best day indicator
-                            if let bestDay = bestDay, bestDay.id == forecast.id {
-                                HStack {
-                                    Image(systemName: "medal.fill")
-                                        .foregroundColor(.yellow)
-                                    Text("Best Day to Ride")
-                                        .font(Theme.Typography.caption)
-                                        .foregroundColor(.yellow)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.top, 4)
-                            }
-                        }
-                        .padding(.vertical, 12)
-                        .padding(.horizontal, 16)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Theme.Colors.asphalt.opacity(0.5))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .strokeBorder(
-                                            bestDay?.id == forecast.id ? Color.yellow : Color.clear,
-                                            lineWidth: 2
-                                        )
-                                )
-                        )
-                    }
-                }
+            dailyForecastList(bestDay: bestDay)
+        }
+    }
+    
+    private func dailyForecastList(bestDay: WeatherData?) -> some View {
+        VStack(spacing: 12) {
+            ForEach(Array(viewModel.dailyForecast.enumerated()), id: \.element.id) { _, forecast in
+                dailyForecastItem(forecast: forecast, bestDay: bestDay)
             }
         }
+    }
+    
+    private func dailyForecastItem(forecast: WeatherData, bestDay: WeatherData?) -> some View {
+        NavigationLink {
+            DailyForecastDetailView(
+                forecast: forecast,
+                viewModel: viewModel
+            )
+        } label: {
+            dailyForecastItemContent(forecast: forecast, bestDay: bestDay)
+        }
+    }
+    
+    private func dailyForecastItemContent(forecast: WeatherData, bestDay: WeatherData?) -> some View {
+        VStack(spacing: 8) {
+            dailyForecastHeader(forecast: forecast)
+            dailyForecastSummary(forecast: forecast)
+            if let bestDay = bestDay, bestDay.id == forecast.id {
+                bestDayIndicator
+            }
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius)
+                .fill(Theme.Colors.secondaryBackground)
+        )
+    }
+    
+    private func dailyForecastHeader(forecast: WeatherData) -> some View {
+        HStack {
+            // Day of week
+            Text(formatDay(forecast.timestamp))
+                .font(Theme.Typography.body)
+                .foregroundColor(.white)
+                .frame(width: 100, alignment: .leading)
+            
+            // Weather icon and temperature range
+            HStack(spacing: 12) {
+                WeatherIcon(
+                    condition: forecast.description,
+                    temperature: forecast.temperature,
+                    isDaytime: forecast.icon.hasSuffix("d"),
+                    size: 30
+                )
+                
+                if let high = forecast.highTemp, let low = forecast.lowTemp {
+                    Text("H: \(viewModel.formatTemperature(high))° L: \(viewModel.formatTemperature(low))°")
+                        .font(Theme.Typography.body)
+                        .foregroundColor(.white)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            
+            // Ride rating with icon
+            rideRatingView(forecast: forecast)
+        }
+    }
+    
+    private func dailyForecastSummary(forecast: WeatherData) -> some View {
+        Text(forecast.weatherSummary)
+            .font(Theme.Typography.caption)
+            .foregroundColor(.white.opacity(0.8))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 4)
+    }
+    
+    private func rideRatingView(forecast: WeatherData) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: forecast.rideRating.icon)
+                .foregroundColor(forecast.rideRating.color)
+            Text(forecast.rideRating.rawValue)
+                .font(Theme.Typography.caption)
+                .foregroundColor(forecast.rideRating.color)
+        }
+        .frame(width: 120, alignment: .trailing)
+    }
+    
+    private var bestDayIndicator: some View {
+        HStack {
+            Image(systemName: "medal.fill")
+                .foregroundColor(.yellow)
+            Text("Best Day to Ride")
+                .font(Theme.Typography.caption)
+                .foregroundColor(.yellow)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 4)
     }
     
     private func getDailyOutlook() -> (rating: String, color: Color) {
@@ -659,20 +721,19 @@ struct WeatherView: View {
         case "01n": return "moon.fill"
         case "02d": return "cloud.sun.fill"
         case "02n": return "cloud.moon.fill"
-        case "03d", "03n": return "cloud.fill"
-        case "04d", "04n": return "smoke.fill"
-        case "09d", "09n": return "cloud.drizzle.fill"
+        case "03d", "03n", "04d", "04n": return "cloud.fill"
+        case "09d", "09n": return "cloud.rain.fill"
         case "10d": return "cloud.sun.rain.fill"
         case "10n": return "cloud.moon.rain.fill"
         case "11d", "11n": return "cloud.bolt.rain.fill"
-        case "13d", "13n": return "snow"
+        case "13d", "13n": return "snowflake"
         case "50d", "50n": return "cloud.fog.fill"
         default: return "cloud.fill"
         }
     }
     
     private struct WeatherStatItem: View {
-        let icon: String
+    let icon: String
         let label: String
         let value: String
     
@@ -711,7 +772,7 @@ struct WeatherView: View {
             .padding(.horizontal, 8)
             .background(
                 Capsule()
-                    .fill(Theme.Colors.asphalt.opacity(0.5))
+                    .fill(Theme.Colors.secondaryBackground)
             )
         }
         
