@@ -8,21 +8,29 @@ struct WeatherView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                // Dynamic weather background
+                // Dynamic weather gradient background
                 if let currentWeather = viewModel.currentWeather {
-                    WeatherBackgroundView(
-                        weatherIcon: currentWeather.icon,
+                    WeatherGradient(
+                        temperature: currentWeather.temperature,
+                        weatherCondition: currentWeather.description,
                         isDaytime: currentWeather.icon.hasSuffix("d")
                     )
+                    .ignoresSafeArea()
                 } else {
-                    Theme.Colors.asphalt.ignoresSafeArea()
+                    Color.black.opacity(0.9).ignoresSafeArea()
                 }
                 
+                // Semi-transparent overlay for better text contrast
+                Color.black.opacity(0.2)
+                    .ignoresSafeArea()
+
                 ScrollView {
                     VStack(spacing: Theme.Layout.cardSpacing) {
                         // Location header
                         if let location = viewModel.currentLocation {
                             locationHeader(location)
+                                .background(.ultraThinMaterial)
+                                .cornerRadius(12)
                         }
                         
                         // Current weather section
@@ -79,77 +87,84 @@ struct WeatherView: View {
                 VStack(alignment: .leading) {
                     Text("\(viewModel.formatTemperature(weather.temperature))°")
                         .font(Theme.Typography.temperature)
-                        .foregroundColor(.white)
+                        .foregroundStyle(.white)
                     
                     TemperatureUnitToggle(viewModel: viewModel, fontSize: 24)
                 }
                 
                 Spacer()
                 
-                // Weather icon without condition
-                WeatherIcon(iconCode: weather.icon, size: 120)
+                // Animated weather icon
+                AnimatedWeatherIcon(iconCode: weather.icon, size: 120)
             }
             .padding(.horizontal, 16)
             
             // Weather description
             Text(weather.description.capitalized)
-                .font(Theme.Typography.title3)
-                .foregroundColor(.white)
+                .font(.title2.weight(.medium))
+                .foregroundStyle(.white)
                 .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.bottom, 8)
-
+                .padding(.vertical, 12)
+                .background(.ultraThinMaterial)
+                .cornerRadius(12)
 
             // Current Riding Condition
             WeatherCard(title: "") {
                 HStack {
                     Image(systemName: "bicycle")
                         .font(.system(size: Theme.Layout.iconSize))
-                        .foregroundColor(Theme.Colors.accent)
+                        .foregroundStyle(.white)
+                        .symbolEffect(.bounce, options: .repeating)
                     
                     Text("Current Riding Condition")
-                        .font(Theme.Typography.body)
-                        .foregroundColor(.white.opacity(0.8))
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(.white)
                     
                     Spacer()
                     
                     RidingConditionPill(condition: weather.ridingCondition)
                 }
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Current riding conditions are \(weather.ridingCondition.rawValue)")
             
             // Hourly forecast
             if !viewModel.hourlyForecast.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 12) {
                     Text("Hourly Forecast")
-                        .font(Theme.Typography.title3)
-                        .foregroundColor(.white)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.white)
                         .padding(.leading, 4)
                     
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 16) {
                             ForEach(viewModel.hourlyForecast) { forecast in
                                 NavigationLink(destination: HourlyForecastDetailView(forecast: forecast, viewModel: viewModel)) {
-                                    VStack(spacing: 8) {
+                                    VStack(spacing: 12) {
                                         // Time
                                         Text(formatHour(forecast.timestamp))
-                                            .font(Theme.Typography.caption)
-                                            .foregroundColor(.white)
+                                            .font(.subheadline.weight(.medium))
+                                            .foregroundStyle(.white)
                                         
                                         // Weather icon
-                                        WeatherIcon(iconCode: forecast.icon, size: 40)
+                                        Image(systemName: getWeatherSymbol(for: forecast.icon))
+                                            .symbolRenderingMode(.multicolor)
+                                            .font(.system(size: 32))
+                                            .accessibilityLabel(forecast.description)
                                         
                                         // Temperature
                                         Text("\(viewModel.formatTemperature(forecast.temperature))°")
-                                            .font(Theme.Typography.body)
-                                            .foregroundColor(.white)
+                                            .font(.body.weight(.semibold))
+                                            .foregroundStyle(.white)
                                         
                                         if forecast.precipitation > 0 {
-                                            HStack(spacing: 2) {
+                                            HStack(spacing: 4) {
                                                 Image(systemName: "drop.fill")
-                                                    .font(.system(size: 10))
+                                                    .foregroundStyle(.blue)
                                                 Text("\(Int(round(forecast.precipitation)))%")
+                                                    .foregroundStyle(.white)
                                             }
-                                            .font(Theme.Typography.caption)
-                                            .foregroundColor(.blue)
+                                            .font(.caption.weight(.medium))
                                         }
                                         
                                         // Riding condition indicator
@@ -157,19 +172,19 @@ struct WeatherView: View {
                                             .fill(colorForCondition(forecast.ridingCondition))
                                             .frame(width: 8, height: 8)
                                     }
-                                    .frame(width: 60)
+                                    .frame(width: 70)
                                     .padding(.vertical, 12)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .fill(Theme.Colors.asphalt.opacity(0.5))
-                                    )
+                                    .background(.ultraThinMaterial)
+                                    .cornerRadius(12)
                                 }
+                                .accessibilityElement(children: .combine)
+                                .accessibilityLabel("Forecast for \(formatHour(forecast.timestamp)): \(forecast.description), \(viewModel.formatTemperature(forecast.temperature))°, \(forecast.ridingCondition.rawValue) riding conditions")
                             }
                         }
                         .padding(.horizontal, 4)
                     }
                 }
-                .padding(.bottom, 16)
+                .padding(.vertical, 16)
             }
 
             // Weather Stats Card
@@ -261,7 +276,7 @@ struct WeatherView: View {
                         let isNextDay = Calendar.current.isDate(end, inSameDayAs: start) == false
                         
                         VStack(alignment: .leading, spacing: 12) {
-                            HStack {
+                                HStack {
                                 Image(systemName: "clock.fill")
                                     .foregroundColor(Theme.Colors.accent)
                                 Text("Recommended window:")
@@ -334,18 +349,18 @@ struct WeatherView: View {
                 .padding(.leading, 4)
             
             let bestDay = viewModel.dailyForecast.max(by: { $0.ridingConfidence < $1.ridingConfidence })
-            
-            VStack(spacing: 12) {
+                                
+                                VStack(spacing: 12) {
                 ForEach(viewModel.dailyForecast) { forecast in
                     NavigationLink(destination: DailyForecastDetailView(forecast: forecast, viewModel: viewModel)) {
                         VStack(spacing: 8) {
-                            HStack {
+                                        HStack {
                                 // Day of week
                                 Text(formatDay(forecast.timestamp))
                                     .font(Theme.Typography.body)
                                     .foregroundColor(.white)
-                                    .frame(width: 100, alignment: .leading)
-                                
+                                                .frame(width: 100, alignment: .leading)
+                                            
                                 // Weather icon and temperature range
                                 HStack(spacing: 12) {
                                     WeatherIcon(iconCode: forecast.icon, size: 30)
@@ -353,7 +368,7 @@ struct WeatherView: View {
                                     if let high = forecast.highTemp, let low = forecast.lowTemp {
                                         Text("H: \(viewModel.formatTemperature(high))° L: \(viewModel.formatTemperature(low))°")
                                             .font(Theme.Typography.body)
-                                            .foregroundColor(.white)
+                                        .foregroundColor(.white)
                                     }
                                 }
                                 .frame(maxWidth: .infinity)
@@ -638,12 +653,30 @@ struct WeatherView: View {
         return reasons
     }
     
+    private func getWeatherSymbol(for iconCode: String) -> String {
+        switch iconCode {
+        case "01d": return "sun.max.fill"
+        case "01n": return "moon.fill"
+        case "02d": return "cloud.sun.fill"
+        case "02n": return "cloud.moon.fill"
+        case "03d", "03n": return "cloud.fill"
+        case "04d", "04n": return "smoke.fill"
+        case "09d", "09n": return "cloud.drizzle.fill"
+        case "10d": return "cloud.sun.rain.fill"
+        case "10n": return "cloud.moon.rain.fill"
+        case "11d", "11n": return "cloud.bolt.rain.fill"
+        case "13d", "13n": return "snow"
+        case "50d", "50n": return "cloud.fog.fill"
+        default: return "cloud.fill"
+        }
+    }
+    
     private struct WeatherStatItem: View {
         let icon: String
         let label: String
         let value: String
-        
-        var body: some View {
+    
+    var body: some View {
             VStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.system(size: 24))

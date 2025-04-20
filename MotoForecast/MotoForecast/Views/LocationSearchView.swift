@@ -177,11 +177,11 @@ struct LocationSearchView: View {
     
     private func searchLocations() {
         Task {
-            isSearching = true
+        isSearching = true
             let result = await viewModel.searchLocations(searchText)
             searchResults = result.locations
             searchError = result.error
-            isSearching = false
+        isSearching = false
         }
     }
     
@@ -198,17 +198,17 @@ private struct LocationRow: View {
     
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(location.city)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(location.city)
                     .font(Theme.Typography.body)
                     .foregroundColor(.white)
-                
-                if let state = location.state {
-                    Text("\(state), \(location.country)")
+            
+            if let state = location.state {
+                Text("\(state), \(location.country)")
                         .font(Theme.Typography.caption)
                         .foregroundColor(.white.opacity(0.7))
-                } else {
-                    Text(location.country)
+            } else {
+                Text(location.country)
                         .font(Theme.Typography.caption)
                         .foregroundColor(.white.opacity(0.7))
                 }
