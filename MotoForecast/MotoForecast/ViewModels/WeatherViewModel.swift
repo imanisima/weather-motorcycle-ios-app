@@ -17,7 +17,7 @@ final class WeatherViewModel: ObservableObject {
     @Published private(set) var activeAlerts: [WeatherAlert] = []
     @Published private(set) var recentLocations: [RecentLocation] = []
     @Published private(set) var favoriteLocations: [Location] = []
-    @Published var shouldShowWelcomeScreen: Bool {
+    @Published var shouldShowWelcomeScreen = true {
         didSet {
             if !shouldShowWelcomeScreen {
                 userDefaults.set(true, forKey: "hasSeenWelcomeScreen")
@@ -159,8 +159,58 @@ final class WeatherViewModel: ObservableObject {
     
     func selectLocation(_ location: Location) async {
         currentLocation = location
-        await fetchWeather(for: location)
-        await weatherService.saveLastViewedLocation(location)
+        isLoading = true
+        
+        do {
+            // First, quickly fetch and display current weather
+            let current = try await weatherService.fetchCurrentWeather(for: location, units: "metric")
+            self.currentWeather = current
+            
+            // Cache the current weather data with timestamp
+            if let data = try? JSONEncoder().encode(current) {
+                userDefaults.set(data, forKey: "cachedCurrentWeather")
+                userDefaults.set(Date(), forKey: "cachedWeatherTimestamp")
+            }
+            
+            // Then fetch the rest concurrently
+            async let hourlyTask = weatherService.fetchHourlyForecast(for: location, units: "metric")
+            async let dailyTask = weatherService.fetchDailyForecast(for: location, units: "metric")
+            
+            let (hourly, daily) = try await (hourlyTask, dailyTask)
+            
+            // Cache the forecast data
+            if let hourlyData = try? JSONEncoder().encode(hourly) {
+                userDefaults.set(hourlyData, forKey: "cachedHourlyForecast")
+            }
+            if let dailyData = try? JSONEncoder().encode(daily) {
+                userDefaults.set(dailyData, forKey: "cachedDailyForecast")
+            }
+            
+            self.hourlyForecast = hourly
+            self.dailyForecast = daily
+            
+            // Save as last viewed location
+            await weatherService.saveLastViewedLocation(location)
+            
+            errorMessage = nil
+        } catch {
+            // If there's an error, try to load cached data
+            if let cachedData = userDefaults.data(forKey: "cachedCurrentWeather"),
+               let cachedWeather = try? JSONDecoder().decode(WeatherData.self, from: cachedData) {
+                self.currentWeather = cachedWeather
+            }
+            if let cachedHourly = userDefaults.data(forKey: "cachedHourlyForecast"),
+               let hourly = try? JSONDecoder().decode([WeatherData].self, from: cachedHourly) {
+                self.hourlyForecast = hourly
+            }
+            if let cachedDaily = userDefaults.data(forKey: "cachedDailyForecast"),
+               let daily = try? JSONDecoder().decode([WeatherData].self, from: cachedDaily) {
+                self.dailyForecast = daily
+            }
+            self.errorMessage = error.localizedDescription
+        }
+        
+        isLoading = false
     }
     
     func addFavorite(_ location: Location) {
@@ -363,55 +413,48 @@ final class WeatherViewModel: ObservableObject {
            Date().timeIntervalSince(cachedTimestamp) < 300,
            let cachedWeather = try? JSONDecoder().decode(WeatherData.self, from: cachedData) {
             self.currentWeather = cachedWeather
+            
+            // Also load cached forecasts
+            if let cachedHourly = userDefaults.data(forKey: "cachedHourlyForecast"),
+               let hourly = try? JSONDecoder().decode([WeatherData].self, from: cachedHourly) {
+                self.hourlyForecast = hourly
+            }
+            if let cachedDaily = userDefaults.data(forKey: "cachedDailyForecast"),
+               let daily = try? JSONDecoder().decode([WeatherData].self, from: cachedDaily) {
+                self.dailyForecast = daily
+            }
+            
             isLoading = false
             return
         }
         
         do {
-            // First, quickly fetch and display current weather
-            let current = try await weatherService.fetchCurrentWeather(for: location, units: "metric")
-            self.currentWeather = current
+            // Fetch all weather data concurrently
+            async let currentTask = weatherService.fetchCurrentWeather(for: location, units: "metric")
+            async let hourlyTask = weatherService.fetchHourlyForecast(for: location, units: "metric")
+            async let dailyTask = weatherService.fetchDailyForecast(for: location, units: "metric")
             
-            // Cache the current weather data with timestamp
-            if let data = try? JSONEncoder().encode(current) {
-                userDefaults.set(data, forKey: "cachedCurrentWeather")
+            let (current, hourly, daily) = try await (currentTask, hourlyTask, dailyTask)
+            
+            // Update all weather data
+            self.currentWeather = current
+            self.hourlyForecast = hourly
+            self.dailyForecast = daily
+            
+            // Cache all weather data
+            if let currentData = try? JSONEncoder().encode(current) {
+                userDefaults.set(currentData, forKey: "cachedCurrentWeather")
                 userDefaults.set(Date(), forKey: "cachedWeatherTimestamp")
+            }
+            if let hourlyData = try? JSONEncoder().encode(hourly) {
+                userDefaults.set(hourlyData, forKey: "cachedHourlyForecast")
+            }
+            if let dailyData = try? JSONEncoder().encode(daily) {
+                userDefaults.set(dailyData, forKey: "cachedDailyForecast")
             }
             
             // Generate alerts after fetching new weather data
             generateWeatherAlerts()
-            
-            // Then fetch the rest concurrently
-            Task {
-                async let hourlyTask = weatherService.fetchHourlyForecast(for: location, units: "metric")
-                async let dailyTask = weatherService.fetchDailyForecast(for: location, units: "metric")
-                
-                do {
-                    let (hourly, daily) = try await (hourlyTask, dailyTask)
-                    
-                    // Cache the forecast data
-                    if let hourlyData = try? JSONEncoder().encode(hourly) {
-                        userDefaults.set(hourlyData, forKey: "cachedHourlyForecast")
-                    }
-                    if let dailyData = try? JSONEncoder().encode(daily) {
-                        userDefaults.set(dailyData, forKey: "cachedDailyForecast")
-                    }
-                    
-                    self.hourlyForecast = hourly
-                    self.dailyForecast = daily
-                } catch {
-                    // If forecast fetch fails, try to load cached data
-                    if let cachedHourly = userDefaults.data(forKey: "cachedHourlyForecast"),
-                       let hourly = try? JSONDecoder().decode([WeatherData].self, from: cachedHourly) {
-                        self.hourlyForecast = hourly
-                    }
-                    if let cachedDaily = userDefaults.data(forKey: "cachedDailyForecast"),
-                       let daily = try? JSONDecoder().decode([WeatherData].self, from: cachedDaily) {
-                        self.dailyForecast = daily
-                    }
-                    print("Error fetching forecast data: \(error)")
-                }
-            }
             
             errorMessage = nil
         } catch {
