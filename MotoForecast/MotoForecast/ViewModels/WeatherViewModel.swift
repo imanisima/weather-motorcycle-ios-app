@@ -2,62 +2,95 @@ import Foundation
 import SwiftUI
 
 @MainActor
-class WeatherViewModel: ObservableObject {
-    @Published var currentLocation: Location?
+final class WeatherViewModel: ObservableObject {
+    // MARK: - Published Properties
+    @Published private(set) var currentLocation: Location?
     @Published var searchResults: [Location] = []
     @Published var searchQuery = ""
-    @Published var isLoading = false
+    @Published private(set) var isLoading = false
     @Published var errorMessage: String?
-    @Published var isEnvironmentValid = false
+    @Published private(set) var isEnvironmentValid = false
     @Published var environmentError: Error?
-    @Published var currentWeather: WeatherData?
-    @Published var hourlyForecast: [WeatherData] = []
-    @Published var dailyForecast: [WeatherData] = []
-    @Published var recentLocations: [RecentLocation] = []
-    @Published var useMetricSystem: Bool {
+    @Published private(set) var currentWeather: WeatherData?
+    @Published private(set) var hourlyForecast: [WeatherData] = []
+    @Published private(set) var dailyForecast: [WeatherData] = []
+    @Published private(set) var recentLocations: [RecentLocation] = []
+    @Published private(set) var favoriteLocations: [Location] = []
+    @Published var temperatureUnit: TemperatureUnit = .fahrenheit {
         didSet {
-            userDefaults.set(useMetricSystem, forKey: "useMetricSystem")
-            refreshWeather()
+            userDefaults.set(temperatureUnit == .celsius, forKey: "useCelsius")
+            refreshWeatherTask?.cancel()
+            refreshWeatherTask = Task {
+                await refreshWeather()
+            }
         }
     }
-    @Published var use24HourFormat: Bool {
+    @Published var use24HourFormat: Bool = false {
         didSet {
             userDefaults.set(use24HourFormat, forKey: "use24HourFormat")
         }
     }
-    @Published var useCelsius: Bool {
+    @Published var useMetricSystem: Bool = false {
+        didSet {
+            userDefaults.set(useMetricSystem, forKey: "useMetricSystem")
+            refreshWeatherTask?.cancel()
+            refreshWeatherTask = Task {
+                await refreshWeather()
+            }
+        }
+    }
+    @Published var useCelsius: Bool = false {
         didSet {
             userDefaults.set(useCelsius, forKey: "useCelsius")
-            refreshWeather()
+            refreshWeatherTask?.cancel()
+            refreshWeatherTask = Task {
+                await refreshWeather()
+            }
         }
     }
     
-    let weatherService: WeatherService
-    private let userDefaults = UserDefaults.standard
-    private let locationKey = "savedLocation"
+    // MARK: - Private Properties
+    public let weatherService: WeatherService
+    private let userDefaults: UserDefaults
+    private var locationWeatherCache: [String: WeatherData] = [:]
+    private var refreshWeatherTask: Task<Void, Never>?
     
-    init() {
-        self.useMetricSystem = UserDefaults.standard.bool(forKey: "useMetricSystem")
-        self.use24HourFormat = UserDefaults.standard.bool(forKey: "use24HourFormat")
-        self.useCelsius = UserDefaults.standard.bool(forKey: "useCelsius")
-        self.weatherService = WeatherService()
+    // MARK: - Initialization
+    init(weatherService: WeatherService, userDefaults: UserDefaults = .standard) {
+        self.weatherService = weatherService
+        self.userDefaults = userDefaults
         
-        // Set default value for useCelsius if not set
-        if UserDefaults.standard.object(forKey: "useCelsius") == nil {
-            userDefaults.set(true, forKey: "useCelsius")
-            self.useCelsius = true
-        }
+        // Load settings from UserDefaults
+        self.use24HourFormat = userDefaults.bool(forKey: "use24HourFormat")
+        self.temperatureUnit = userDefaults.bool(forKey: "useCelsius") ? .celsius : .fahrenheit
+        self.useMetricSystem = userDefaults.bool(forKey: "useMetricSystem")
+        self.useCelsius = userDefaults.bool(forKey: "useCelsius")
         
-        // Load initial data
+        // Setup async tasks after initialization
         Task {
-            await validateEnvironment()
-            await loadLastLocation()
+            await setup()
         }
     }
     
-    private func refreshWeather() {
+    convenience init() {
+        self.init(weatherService: WeatherService())
+    }
+    
+    private func setup() async {
+        await validateEnvironment()
+        await loadLastLocation()
+        await loadFavorites()
+    }
+    
+    // MARK: - Public Methods
+    func refreshWeather() async {
         guard let location = currentLocation else { return }
-        Task {
+        await fetchWeather(for: location)
+    }
+    
+    func loadLastLocation() async {
+        if let location = await weatherService.loadLastViewedLocation() {
+            currentLocation = location
             await fetchWeather(for: location)
         }
     }
@@ -85,140 +118,72 @@ class WeatherViewModel: ObservableObject {
     func selectLocation(_ location: Location) async {
         currentLocation = location
         await fetchWeather(for: location)
+        await weatherService.saveLastViewedLocation(location)
     }
     
-    private func loadLastLocation() async {
-        if let location = weatherService.loadLastViewedLocation() {
-            currentLocation = location
-            await fetchWeather(for: location)
+    func addFavorite(_ location: Location) {
+        guard !favoriteLocations.contains(where: { $0.id == location.id }) else { return }
+        favoriteLocations.append(location)
+        saveFavorites()
+        
+        Task {
+            if let weather = try? await weatherService.fetchCurrentWeather(for: location, units: "metric") {
+                locationWeatherCache[location.id.uuidString] = weather
+            }
         }
     }
     
-    func fetchWeather(for location: Location) async {
-        isLoading = true
-        defer { isLoading = false }
-        
-        // Always fetch in metric units for consistency
-        let units = "metric"
-        
-        await weatherService.fetchWeather(for: location, units: units)
-        
-        // Update published properties
-        currentWeather = weatherService.currentWeather
-        hourlyForecast = weatherService.hourlyForecast
-        dailyForecast = weatherService.dailyForecast
-        recentLocations = weatherService.recentLocations
+    func removeFavorite(_ location: Location) {
+        favoriteLocations.removeAll(where: { $0.id == location.id })
+        locationWeatherCache.removeValue(forKey: location.id.uuidString)
+        saveFavorites()
     }
     
-    private func saveLocation(_ location: Location) {
-        if let encoded = try? JSONEncoder().encode(location) {
-            userDefaults.set(encoded, forKey: locationKey)
-        }
+    func weatherForLocation(_ location: Location) -> WeatherData? {
+        locationWeatherCache[location.id.uuidString]
     }
     
-    private func loadSavedLocation() {
-        if let data = userDefaults.data(forKey: locationKey),
-           let location = try? JSONDecoder().decode(Location.self, from: data) {
-            self.currentLocation = location
-            // Ensure we fetch weather data
-            Task {
-                if !isEnvironmentValid {
-                    await validateEnvironment()
-                }
-                if isEnvironmentValid {
-                    await fetchWeather(for: location)
+    // MARK: - Helper Methods
+    func formatTemperature(_ temp: Double) -> String {
+        let convertedTemp = temperatureUnit.convert(temp, from: .celsius)
+        return "\(Int(round(convertedTemp)))"
+    }
+    
+    func formatWindSpeed(_ speed: Double) -> String {
+        let windSpeed = temperatureUnit == .celsius ? speed * 3.6 : speed * 2.237
+        return "\(Int(round(windSpeed))) \(temperatureUnit == .celsius ? "km/h" : "mph")"
+    }
+    
+    // MARK: - Private Methods
+    private func loadFavorites() async {
+        if let data = userDefaults.data(forKey: "favoriteLocations"),
+           let locations = try? JSONDecoder().decode([Location].self, from: data) {
+            favoriteLocations = locations
+            
+            for location in locations {
+                if let weather = try? await weatherService.fetchCurrentWeather(for: location, units: "metric") {
+                    locationWeatherCache[location.id.uuidString] = weather
                 }
             }
         }
     }
     
-    func getRidingRecommendations() -> [String] {
-        guard let weather = currentWeather else { return [] }
-        
-        var recommendations: [String] = []
-        
-        // Temperature recommendations
-        if weather.temperature > 30 {
-            recommendations.append("High temperature alert: Stay hydrated and take frequent breaks")
-        } else if weather.temperature < 10 {
-            recommendations.append("Low temperature alert: Wear appropriate cold weather gear")
+    private func saveFavorites() {
+        if let data = try? JSONEncoder().encode(favoriteLocations) {
+            userDefaults.set(data, forKey: "favoriteLocations")
         }
-        
-        // Wind recommendations
-        if weather.windSpeed > 20 {
-            recommendations.append("Strong winds: Be cautious of gusts and maintain a firm grip")
-        }
-        
-        // Precipitation recommendations
-        if weather.precipitation > 0 {
-            recommendations.append("Rain alert: Wear waterproof gear and reduce speed")
-        }
-        
-        // Visibility recommendations
-        if let visibility = weather.visibility, visibility < 5 {
-            recommendations.append("Poor visibility: Use high beams and maintain safe distance")
-        }
-        
-        // If no specific recommendations, add a default one
-        if recommendations.isEmpty {
-            recommendations.append("Good riding conditions. Remember to stay alert and enjoy your ride!")
-        }
-        
-        return recommendations
     }
     
-    func getGearRecommendations() -> [String] {
-        guard let weather = weatherService.currentWeather else { return [] }
+    public func fetchWeather(for location: Location) async {
+        isLoading = true
+        defer { isLoading = false }
         
-        var gear: [String] = []
+        await weatherService.fetchWeather(for: location, units: "metric")
         
-        // Base gear
-        gear.append("Always wear: Helmet, gloves, boots, and protective jacket")
-        
-        // Weather-specific gear
-        if weather.temperature < 15 {
-            gear.append("Thermal base layer")
-            gear.append("Insulated riding jacket")
-        }
-        
-        if weather.precipitation > 0 {
-            gear.append("Waterproof jacket and pants")
-            gear.append("Waterproof boots")
-        }
-        
-        if weather.temperature > 25 {
-            gear.append("Mesh jacket for ventilation")
-            gear.append("Moisture-wicking base layer")
-        }
-        
-        return gear
-    }
-    
-    // Helper function to format temperature
-    func formatTemperature(_ temp: Double) -> String {
-        let convertedTemp = if !useCelsius {
-            // Convert from Celsius to Fahrenheit
-            temp * 9/5 + 32
-        } else {
-            // Keep as Celsius
-            temp
-        }
-        return "\(Int(round(convertedTemp)))"
-    }
-    
-    func toggleTemperatureUnit() {
-        useCelsius.toggle()
-    }
-    
-    // Helper function to format wind speed
-    func formatWindSpeed(_ speed: Double) -> String {
-        let windSpeed = if useMetricSystem {
-            // Input is in m/s, convert to km/h
-            speed * 3.6
-        } else {
-            // Input is in m/s, convert to mph
-            speed * 2.237
-        }
-        return "\(Int(round(windSpeed))) \(useMetricSystem ? "km/h" : "mph")"
+        // Update published properties from the weather service
+        currentWeather = await weatherService.currentWeather
+        hourlyForecast = await weatherService.hourlyForecast
+        dailyForecast = await weatherService.dailyForecast
+        recentLocations = await weatherService.recentLocations
     }
 } 

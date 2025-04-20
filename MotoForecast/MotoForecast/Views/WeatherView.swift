@@ -4,46 +4,56 @@ struct WeatherView: View {
     @ObservedObject var viewModel: WeatherViewModel
     @State private var showingSettings = false
     @State private var showingLocationSearch = false
+    @State private var showingWelcomeScreen = true
     
     var body: some View {
         NavigationView {
             ZStack {
-                // Dynamic weather gradient background
-                if let currentWeather = viewModel.currentWeather {
-                    WeatherGradient(
-                        temperature: currentWeather.temperature,
-                        weatherCondition: currentWeather.description,
-                        isDaytime: currentWeather.icon.hasSuffix("d")
-                    )
-                    .ignoresSafeArea()
-                } else {
-                    Color.black.opacity(0.9).ignoresSafeArea()
-                }
-                
-                // Semi-transparent overlay for better text contrast
-                Color.black.opacity(0.2)
-                    .ignoresSafeArea()
-                
-                ScrollView {
-                    VStack(spacing: Theme.Layout.cardSpacing) {
-                        // Location header
-                        if let location = viewModel.currentLocation {
-                            locationHeader(location)
-                                .background(.ultraThinMaterial)
-                                .cornerRadius(12)
-                        }
-                        
-                        // Current weather section
-                        if let currentWeather = viewModel.currentWeather {
-                            currentWeatherSection(currentWeather)
-                        }
-                        
-                        // Daily forecast
-                        if !viewModel.dailyForecast.isEmpty {
-                            dailyForecastSection
+                if showingWelcomeScreen {
+                    WelcomeView(isPresented: $showingWelcomeScreen) {
+                        Task {
+                            await viewModel.loadLastLocation()
+                            showingWelcomeScreen = false
                         }
                     }
-                    .padding(Theme.Layout.screenPadding)
+                } else {
+                    // Dynamic weather gradient background
+                    if let currentWeather = viewModel.currentWeather {
+                        WeatherGradient(
+                            temperature: currentWeather.temperature,
+                            weatherCondition: currentWeather.description,
+                            isDaytime: currentWeather.icon.hasSuffix("d")
+                        )
+                        .ignoresSafeArea()
+                    } else {
+                        Color.black.opacity(0.9).ignoresSafeArea()
+                    }
+                    
+                    // Semi-transparent overlay for better text contrast
+                    Color.black.opacity(0.2)
+                        .ignoresSafeArea()
+                    
+                    ScrollView {
+                        VStack(spacing: Theme.Layout.cardSpacing) {
+                            // Location header with favorites button
+                            if let location = viewModel.currentLocation {
+                                locationHeader(location)
+                                    .background(.ultraThinMaterial)
+                                    .cornerRadius(12)
+                            }
+                            
+                            // Current weather section
+                            if let currentWeather = viewModel.currentWeather {
+                                currentWeatherSection(currentWeather)
+                            }
+                            
+                            // Daily forecast
+                            if !viewModel.dailyForecast.isEmpty {
+                                dailyForecastSection
+                            }
+                        }
+                        .padding(Theme.Layout.screenPadding)
+                    }
                 }
             }
             .navigationBarHidden(true)
@@ -53,28 +63,47 @@ struct WeatherView: View {
             .sheet(isPresented: $showingSettings) {
                 SettingsView(viewModel: viewModel)
             }
+            .task {
+                if !showingWelcomeScreen {
+                    await viewModel.loadLastLocation()
+                }
+            }
         }
     }
     
     private func locationHeader(_ location: Location) -> some View {
-                                HStack {
-                                    Button(action: { showingLocationSearch = true }) {
+        HStack {
+            Button(action: { showingLocationSearch = true }) {
                 HStack {
                     Image(systemName: "location.fill")
-                        .foregroundColor(Theme.Colors.accent)
+                        .foregroundStyle(Theme.Colors.accent)
                     
                     Text(location.city)
                         .font(Theme.Typography.title2)
-                                            .foregroundColor(.white)
+                        .foregroundStyle(.primary)
                 }
-                                    }
-                                    
-                                    Spacer()
-                                    
-                                    Button(action: { showingSettings = true }) {
-                                        Image(systemName: "gear")
-                    .font(.system(size: Theme.Layout.iconSize))
-                                            .foregroundColor(.white)
+            }
+            
+            Spacer()
+            
+            HStack(spacing: 16) {
+                Button(action: {
+                    if viewModel.favoriteLocations.contains(where: { $0.id == location.id }) {
+                        viewModel.removeFavorite(location)
+                    } else {
+                        viewModel.addFavorite(location)
+                    }
+                }) {
+                    Image(systemName: viewModel.favoriteLocations.contains(where: { $0.id == location.id }) ? "star.fill" : "star")
+                        .font(.system(size: Theme.Layout.iconSize))
+                        .foregroundStyle(.yellow)
+                }
+                
+                Button(action: { showingSettings = true }) {
+                    Image(systemName: "gear")
+                        .font(.system(size: Theme.Layout.iconSize))
+                        .foregroundStyle(.primary)
+                }
             }
         }
         .padding(.vertical, 8)
@@ -97,8 +126,9 @@ struct WeatherView: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading) {
                 Text("\(viewModel.formatTemperature(weather.temperature))°")
-                    .font(Theme.Typography.temperature)
-                    .foregroundStyle(.white)
+                    .font(.system(size: 64, weight: .bold))
+                    .foregroundStyle(.primary)
+                    .accessibilityLabel("Current temperature is \(viewModel.formatTemperature(weather.temperature)) degrees")
                 
                 TemperatureUnitToggle(viewModel: viewModel, fontSize: 24)
             }
@@ -106,46 +136,75 @@ struct WeatherView: View {
             Spacer()
             
             AnimatedWeatherIcon(iconCode: weather.icon, size: 120)
+                .accessibility(hidden: true)
         }
         .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(.secondarySystemBackground))
+        .cornerRadius(16)
     }
     
     private func weatherDescriptionView(_ weather: WeatherData) -> some View {
         Text(weather.description.capitalized)
-            .font(.title2.weight(.medium))
-            .foregroundStyle(.white)
+            .font(.system(size: 24, weight: .semibold))
+            .foregroundStyle(.primary)
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 12)
-            .background(.ultraThinMaterial)
+            .padding(.horizontal, 16)
+            .background(Color(.secondarySystemBackground))
             .cornerRadius(12)
+            .accessibilityLabel("Weather condition: \(weather.description)")
     }
     
     private func currentRidingConditionView(_ weather: WeatherData) -> some View {
         WeatherCard(title: "") {
-            HStack {
-                Image(systemName: "bicycle")
-                    .font(.system(size: Theme.Layout.iconSize))
-                    .foregroundStyle(.white)
-                    .symbolEffect(.bounce, options: .repeating)
+            VStack(spacing: 16) {
+                HStack {
+                    Image(systemName: "bicycle")
+                        .font(.system(size: Theme.Layout.iconSize))
+                        .foregroundStyle(.primary)
+                        .symbolEffect(.bounce, options: .repeating)
+                        .accessibility(hidden: true)
+                    
+                    Text("Current Riding Condition")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    
+                    Spacer()
+                    
+                    RidingConditionPill(condition: weather.ridingCondition)
+                }
                 
-                Text("Current Riding Condition")
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(.white)
-                
-                Spacer()
-                
-                RidingConditionPill(condition: weather.ridingCondition)
+                // Add explanation text
+                Text(getRidingConditionExplanation(weather.ridingCondition))
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .padding(16)
+            .background(Color(.secondarySystemBackground))
+            .cornerRadius(12)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Current riding conditions are \(weather.ridingCondition.rawValue)")
+        .accessibilityLabel("Current riding conditions are \(weather.ridingCondition.rawValue). \(getRidingConditionExplanation(weather.ridingCondition))")
+    }
+    
+    private func getRidingConditionExplanation(_ condition: RidingCondition) -> String {
+        switch condition {
+        case .good:
+            return "Perfect conditions for a ride! The weather is ideal for motorcycling."
+        case .moderate:
+            return "Riding is possible but stay alert. Some weather conditions require extra caution."
+        case .unsafe:
+            return "Riding is not recommended. Current weather conditions could be dangerous."
+        }
     }
     
     private var hourlyForecastView: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Hourly Forecast")
                 .font(.title3.weight(.semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
                 .padding(.leading, 4)
             
             ScrollView(.horizontal, showsIndicators: false) {
@@ -170,7 +229,7 @@ struct WeatherView: View {
             VStack(spacing: 12) {
                 Text(formatHour(forecast.timestamp))
                     .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                 
                 Image(systemName: getWeatherSymbol(for: forecast.icon))
                     .symbolRenderingMode(.multicolor)
@@ -179,14 +238,14 @@ struct WeatherView: View {
                 
                 Text("\(viewModel.formatTemperature(forecast.temperature))°")
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                 
                 if forecast.precipitation > 0 {
                     HStack(spacing: 4) {
                         Image(systemName: "drop.fill")
                             .foregroundStyle(.blue)
                         Text("\(Int(round(forecast.precipitation)))%")
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.primary)
                     }
                     .font(.caption.weight(.medium))
                 }
@@ -220,22 +279,26 @@ struct WeatherView: View {
                         WeatherStatItem(
                             icon: "thermometer",
                             label: "Feels Like",
-                            value: "\(viewModel.formatTemperature(weather.feelsLike))°"
+                            value: "\(viewModel.formatTemperature(weather.feelsLike))°",
+                            iconColor: .orange
                         )
                         WeatherStatItem(
                             icon: "wind",
                             label: "Wind",
-                            value: viewModel.formatWindSpeed(weather.windSpeed)
+                            value: viewModel.formatWindSpeed(weather.windSpeed),
+                            iconColor: .blue
                         )
                         WeatherStatItem(
                             icon: "humidity",
                             label: "Humidity",
-                            value: "\(weather.humidity)%"
+                            value: "\(weather.humidity)%",
+                            iconColor: .cyan
                         )
                         WeatherStatItem(
                             icon: "eye",
                             label: "Visibility",
-                            value: weather.visibilityCondition.rawValue
+                            value: weather.visibilityCondition.rawValue,
+                            iconColor: .purple
                         )
                     }
                 }
@@ -270,7 +333,7 @@ struct WeatherView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Can I go riding right now?")
                 .font(Theme.Typography.title2)
-                .foregroundColor(.white)
+                .foregroundStyle(.primary)
             
             HStack(spacing: 12) {
                 Image(systemName: weather.ridingCondition == .good ? "checkmark.circle.fill" : 
@@ -285,12 +348,12 @@ struct WeatherView: View {
                      weather.ridingCondition == .moderate ? "Yes, but be cautious" :
                      "Not recommended")
                     .font(Theme.Typography.headline)
-                    .foregroundColor(.white)
+                    .foregroundStyle(.primary)
             }
             
             Text("Current factors:")
                 .font(Theme.Typography.subheadline)
-                .foregroundColor(.white.opacity(0.7))
+                .foregroundStyle(.secondary)
             
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(getRatingExplanation(for: weather), id: \.self) { point in
@@ -302,7 +365,7 @@ struct WeatherView: View {
                         
                         Text(point)
                             .font(Theme.Typography.body)
-                            .foregroundColor(.white.opacity(0.9))
+                            .foregroundStyle(.primary)
                     }
                 }
             }
@@ -318,17 +381,17 @@ struct WeatherView: View {
                     .foregroundColor(Theme.Colors.accent)
                 Text("Recommended window:")
                     .font(Theme.Typography.subheadline)
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundStyle(.primary)
             }
             
             Text("\(formatHour(start)) - \(formatHour(end))")
                 .font(Theme.Typography.title)
-                .foregroundColor(.green)
+                .foregroundStyle(.green)
             
             if isNextDay {
                 Text("(extends into tomorrow)")
                     .font(Theme.Typography.caption)
-                    .foregroundColor(.green.opacity(0.8))
+                    .foregroundStyle(.green.opacity(0.8))
             }
         }
         .background(
@@ -346,7 +409,7 @@ struct WeatherView: View {
                 
                 Text("Use Caution Today")
                     .font(Theme.Typography.title3)
-                    .foregroundColor(.yellow)
+                    .foregroundStyle(.yellow)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 8)
@@ -358,7 +421,7 @@ struct WeatherView: View {
             
             Text("Why exercise caution:")
                 .font(Theme.Typography.subheadline)
-                .foregroundColor(.white.opacity(0.8))
+                .foregroundStyle(.primary)
             
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(getCautionReasons(), id: \.self) { reason in
@@ -370,7 +433,7 @@ struct WeatherView: View {
                         
                         Text(reason)
                             .font(Theme.Typography.body)
-                            .foregroundColor(.white.opacity(0.9))
+                            .foregroundStyle(.primary)
                     }
                 }
             }
@@ -381,7 +444,7 @@ struct WeatherView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("5-Day Forecast")
                 .font(Theme.Typography.title3)
-                .foregroundColor(.white)
+                .foregroundStyle(.primary)
                 .padding(.leading, 4)
             
             let bestDay = viewModel.dailyForecast.max(by: { $0.ridingConfidence < $1.ridingConfidence })
@@ -428,8 +491,8 @@ struct WeatherView: View {
         HStack {
             // Day of week
             Text(formatDay(forecast.timestamp))
-                .font(Theme.Typography.body)
-                .foregroundColor(.white)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.primary)
                 .frame(width: 100, alignment: .leading)
             
             // Weather icon and temperature range
@@ -443,8 +506,8 @@ struct WeatherView: View {
                 
                 if let high = forecast.highTemp, let low = forecast.lowTemp {
                     Text("H: \(viewModel.formatTemperature(high))° L: \(viewModel.formatTemperature(low))°")
-                        .font(Theme.Typography.body)
-                        .foregroundColor(.white)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.primary)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -452,37 +515,52 @@ struct WeatherView: View {
             // Ride rating with icon
             rideRatingView(forecast: forecast)
         }
+        .padding(12)
+        .background(Color(.secondarySystemBackground))
+        .cornerRadius(12)
     }
     
     private func dailyForecastSummary(forecast: WeatherData) -> some View {
         Text(forecast.weatherSummary)
-            .font(Theme.Typography.caption)
-            .foregroundColor(.white.opacity(0.8))
+            .font(.system(size: 14, weight: .regular))
+            .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 4)
+            .accessibilityLabel("Weather summary: \(forecast.weatherSummary)")
     }
     
     private func rideRatingView(forecast: WeatherData) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: forecast.rideRating.icon)
-                .foregroundColor(forecast.rideRating.color)
-            Text(forecast.rideRating.rawValue)
-                .font(Theme.Typography.caption)
-                .foregroundColor(forecast.rideRating.color)
-        }
-        .frame(width: 120, alignment: .trailing)
+        Text(forecast.rideRating.rawValue)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(Color(.tertiarySystemBackground))
+            )
+            .accessibilityLabel("Riding conditions: \(forecast.rideRating.rawValue)")
     }
     
     private var bestDayIndicator: some View {
         HStack {
             Image(systemName: "medal.fill")
-                .foregroundColor(.yellow)
+                .foregroundStyle(.primary)
+                .accessibility(hidden: true)
             Text("Best Day to Ride")
-                .font(Theme.Typography.caption)
-                .foregroundColor(.yellow)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.primary)
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            Capsule()
+                .fill(Color(.tertiarySystemBackground))
+        )
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("This is the best day for riding")
     }
     
     private func getDailyOutlook() -> (rating: String, color: Color) {
@@ -733,25 +811,34 @@ struct WeatherView: View {
     }
     
     private struct WeatherStatItem: View {
-    let icon: String
+        let icon: String
         let label: String
         let value: String
-    
-    var body: some View {
+        let iconColor: Color
+        
+        var body: some View {
             VStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.system(size: 24))
-                    .foregroundColor(Theme.Colors.accent)
+                    .foregroundStyle(iconColor)
+                    .accessibility(hidden: true)
                 
                 Text(label)
-                    .font(Theme.Typography.caption)
-                    .foregroundColor(.white.opacity(0.7))
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel(label)
                 
                 Text(value)
-                    .font(Theme.Typography.title3)
-                    .foregroundColor(.white)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.primary)
+                    .accessibilityValue(value)
             }
             .frame(maxWidth: .infinity)
+            .padding(12)
+            .background(Color(.secondarySystemBackground))
+            .cornerRadius(12)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(label): \(value)")
         }
     }
     
@@ -766,7 +853,7 @@ struct WeatherView: View {
                 
                 Text(condition.rawValue)
                     .font(Theme.Typography.caption)
-                    .foregroundColor(.white)
+                    .foregroundStyle(.primary)
             }
             .padding(.vertical, 4)
             .padding(.horizontal, 8)
@@ -784,6 +871,33 @@ struct WeatherView: View {
                 return Theme.Colors.moderateRiding
             case .unsafe:
                 return Theme.Colors.unsafeRiding
+            }
+        }
+    }
+    
+    private struct TemperatureUnitToggle: View {
+        @ObservedObject var viewModel: WeatherViewModel
+        let fontSize: CGFloat
+        
+        var body: some View {
+            HStack(spacing: 4) {
+                Text("°F")
+                    .font(.system(size: fontSize))
+                    .foregroundStyle(viewModel.temperatureUnit == .fahrenheit ? .primary : .secondary)
+                    .onTapGesture {
+                        viewModel.temperatureUnit = .fahrenheit
+                    }
+                
+                Text("/")
+                    .font(.system(size: fontSize))
+                    .foregroundStyle(.primary)
+                
+                Text("°C")
+                    .font(.system(size: fontSize))
+                    .foregroundStyle(viewModel.temperatureUnit == .celsius ? .primary : .secondary)
+                    .onTapGesture {
+                        viewModel.temperatureUnit = .celsius
+                    }
             }
         }
     }

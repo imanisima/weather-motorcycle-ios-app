@@ -77,7 +77,7 @@ final class WeatherService: ObservableObject {
         return location
     }
     
-    private func saveLastViewedLocation(_ location: Location) {
+    public func saveLastViewedLocation(_ location: Location) {
         if let data = try? JSONEncoder().encode(location) {
             userDefaults.set(data, forKey: lastViewedLocationKey)
         }
@@ -111,76 +111,61 @@ final class WeatherService: ObservableObject {
         }
     }
     
-    func fetchWeather(for location: Location, units: String = "metric") async {
-        guard isEnvironmentValid else {
-            await validateEnvironment()
-            return
-        }
-        
-        selectedLocation = location
-        
-        // Fetch current weather
-        await fetchCurrentWeather(for: location, units: units)
-        
-        // Fetch hourly forecast
-        await fetchHourlyForecast(for: location, units: units)
-        
-        // Fetch daily forecast
-        await fetchDailyForecast(for: location, units: units)
-    }
-    
-    private func fetchCurrentWeather(for location: Location, units: String) async {
+    public func fetchCurrentWeather(for location: Location, units: String) async throws -> WeatherData {
         let urlString = "\(baseURL)/weather?lat=\(location.latitude)&lon=\(location.longitude)&appid=\(apiKey)&units=\(units)"
         
-        guard let url = URL(string: urlString) else { return }
+        guard let url = URL(string: urlString) else {
+            throw LocationSearchError.invalidResponse
+        }
         
-        do {
-            let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await URLSession.shared.data(from: url)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw LocationSearchError.invalidResponse
+        }
+        
+        switch httpResponse.statusCode {
+        case 200:
+            let decoder = JSONDecoder()
+            let weatherResponse = try decoder.decode(OpenWeatherResponse.self, from: data)
             
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw EnvironmentError.networkError(NSError(domain: "WeatherService", code: -1))
-            }
+            return WeatherData(
+                id: UUID(),
+                temperature: weatherResponse.main.temp,
+                feelsLike: weatherResponse.main.feelsLike,
+                humidity: weatherResponse.main.humidity,
+                windSpeed: weatherResponse.wind.speed,
+                precipitation: weatherResponse.rain?.oneHour ?? 0,
+                visibility: Double(weatherResponse.visibility) / 1000,
+                description: weatherResponse.weather.first?.description ?? "",
+                icon: weatherResponse.weather.first?.icon ?? "",
+                timestamp: Date()
+            )
             
-            switch httpResponse.statusCode {
-            case 200:
-                let decoder = JSONDecoder()
-                let weatherResponse = try decoder.decode(OpenWeatherResponse.self, from: data)
-                
-                let weatherData = WeatherData(
-                    id: UUID(),
-                    temperature: weatherResponse.main.temp,
-                    feelsLike: weatherResponse.main.feelsLike,
-                    humidity: weatherResponse.main.humidity,
-                    windSpeed: weatherResponse.wind.speed,
-                    precipitation: weatherResponse.rain?.oneHour ?? 0,
-                    visibility: Double(weatherResponse.visibility) / 1000,
-                    description: weatherResponse.weather.first?.description ?? "",
-                    icon: weatherResponse.weather.first?.icon ?? "",
-                    timestamp: Date()
-                )
-                
-                currentWeather = weatherData
-                error = nil
-                
-            case 401:
-                throw EnvironmentError.invalidAPIKey
-            case 403:
-                throw EnvironmentError.apiKeyNotActive
-            default:
-                throw EnvironmentError.networkError(NSError(domain: "WeatherService", code: httpResponse.statusCode))
-            }
-        } catch {
-            self.error = error
+        case 401:
+            throw EnvironmentError.invalidAPIKey
+        case 403:
+            throw EnvironmentError.apiKeyNotActive
+        default:
+            throw LocationSearchError.networkError(NSError(domain: "WeatherService", code: httpResponse.statusCode))
         }
     }
     
-    private func fetchHourlyForecast(for location: Location, units: String) async {
+    private func fetchHourlyForecast(for location: Location, units: String) async throws -> [WeatherData] {
         let urlString = "\(baseURL)/forecast?lat=\(location.latitude)&lon=\(location.longitude)&appid=\(apiKey)&units=\(units)"
         
-        guard let url = URL(string: urlString) else { return }
+        guard let url = URL(string: urlString) else {
+            throw LocationSearchError.invalidResponse
+        }
         
-        do {
-            let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await URLSession.shared.data(from: url)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw LocationSearchError.invalidResponse
+        }
+        
+        switch httpResponse.statusCode {
+        case 200:
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .secondsSince1970
             let forecastResponse = try decoder.decode(ForecastResponse.self, from: data)
@@ -188,7 +173,7 @@ final class WeatherService: ObservableObject {
             // Get all 24 hours (OpenWeather API provides data in 3-hour intervals)
             let next24Hours = forecastResponse.list.prefix(24)
             
-            let hourlyForecasts = next24Hours.map { item in
+            return next24Hours.map { item in
                 WeatherData(
                     id: UUID(),
                     temperature: item.main.temp,
@@ -203,56 +188,41 @@ final class WeatherService: ObservableObject {
                 )
             }
             
-            hourlyForecast = hourlyForecasts
-        } catch {
-            print("Error fetching hourly forecast: \(error)")
+        case 401:
+            throw EnvironmentError.invalidAPIKey
+        case 403:
+            throw EnvironmentError.apiKeyNotActive
+        default:
+            throw LocationSearchError.networkError(NSError(domain: "WeatherService", code: httpResponse.statusCode))
         }
     }
     
-    private func fetchDailyForecast(for location: Location, units: String) async {
-        print("Starting daily forecast fetch for \(location.name)")
+    private func fetchDailyForecast(for location: Location, units: String) async throws -> [WeatherData] {
         let urlString = "\(baseURL)/forecast?lat=\(location.latitude)&lon=\(location.longitude)&appid=\(apiKey)&units=\(units)"
         
-        print("Daily forecast URL: \(urlString)")
-        
         guard let url = URL(string: urlString) else {
-            print("Invalid URL for daily forecast")
-            error = LocationSearchError.invalidResponse
-            return
+            throw LocationSearchError.invalidResponse
         }
         
-        do {
-            print("Making API request for daily forecast...")
-            let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await URLSession.shared.data(from: url)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw LocationSearchError.invalidResponse
+        }
+        
+        switch httpResponse.statusCode {
+        case 200:
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .secondsSince1970
+            let forecastResponse = try decoder.decode(ForecastResponse.self, from: data)
+            return processDailyForecasts(from: forecastResponse.list)
             
-            guard let httpResponse = response as? HTTPURLResponse else {
-                print("Invalid HTTP response")
-                throw LocationSearchError.invalidResponse
-            }
-            
-            print("Daily forecast response status: \(httpResponse.statusCode)")
-            
-            switch httpResponse.statusCode {
-            case 200:
-                let decoder = JSONDecoder()
-                decoder.dateDecodingStrategy = .secondsSince1970
-                let forecastResponse = try decoder.decode(ForecastResponse.self, from: data)
-                
-                // Process daily forecasts (group by day and get min/max temps)
-                let dailyForecasts = processDailyForecasts(from: forecastResponse.list)
-                dailyForecast = dailyForecasts
-                error = nil
-                
-            case 401:
-                throw EnvironmentError.invalidAPIKey
-            case 403:
-                throw EnvironmentError.apiKeyNotActive
-            default:
-                throw LocationSearchError.networkError(NSError(domain: "WeatherService", code: httpResponse.statusCode))
-            }
-        } catch {
-            print("Error fetching daily forecast: \(error)")
-            self.error = error
+        case 401:
+            throw EnvironmentError.invalidAPIKey
+        case 403:
+            throw EnvironmentError.apiKeyNotActive
+        default:
+            throw LocationSearchError.networkError(NSError(domain: "WeatherService", code: httpResponse.statusCode))
         }
     }
     
@@ -295,6 +265,33 @@ final class WeatherService: ObservableObject {
         print("Successfully fetched \(dailyForecasts.count) daily forecasts")
         
         return dailyForecasts
+    }
+    
+    public func fetchWeather(for location: Location, units: String = "metric") async {
+        guard isEnvironmentValid else {
+            await validateEnvironment()
+            return
+        }
+        
+        selectedLocation = location
+        
+        do {
+            // Fetch all weather data concurrently
+            async let currentWeatherTask = fetchCurrentWeather(for: location, units: units)
+            async let hourlyForecastTask = fetchHourlyForecast(for: location, units: units)
+            async let dailyForecastTask = fetchDailyForecast(for: location, units: units)
+            
+            let (current, hourly, daily) = try await (currentWeatherTask, hourlyForecastTask, dailyForecastTask)
+            
+            // Update the published properties
+            self.currentWeather = current
+            self.hourlyForecast = hourly
+            self.dailyForecast = daily
+            
+            error = nil
+        } catch {
+            self.error = error
+        }
     }
     
     func searchLocations(query: String) async -> (locations: [Location], error: LocationSearchError?) {

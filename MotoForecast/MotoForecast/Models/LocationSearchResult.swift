@@ -3,6 +3,11 @@ import Foundation
 struct LocationSearchResult {
     let locations: [Location]
     let error: LocationSearchError?
+    
+    init(locations: [Location], error: LocationSearchError? = nil) {
+        self.locations = locations
+        self.error = error
+    }
 }
 
 enum LocationSearchError: LocalizedError {
