@@ -2,12 +2,13 @@ import SwiftUI
 
 struct SavedPlacesView: View {
     @ObservedObject var viewModel: WeatherViewModel
+    @Binding var selectedTab: Int
     
     var body: some View {
         NavigationView {
             List {
                 ForEach(viewModel.favoriteLocations) { location in
-                    SavedPlaceRow(location: location, viewModel: viewModel)
+                    SavedPlaceRow(location: location, viewModel: viewModel, selectedTab: $selectedTab)
                 }
             }
             .navigationTitle("Saved Places")
@@ -19,20 +20,22 @@ struct SavedPlacesView: View {
 struct SavedPlaceRow: View {
     let location: Location
     let viewModel: WeatherViewModel
+    @Binding var selectedTab: Int
     
     var body: some View {
         Button(action: {
             Task {
                 await viewModel.selectLocation(location)
+                viewModel.shouldShowWelcomeScreen = false
+                selectedTab = 0 // Switch to weather tab
             }
         }) {
             HStack {
                 locationInfo
                 Spacer()
                 weatherInfo
-                navigationArrow
             }
-            .padding(.vertical, 4)
+            .contentShape(Rectangle())
         }
     }
     
@@ -62,13 +65,8 @@ struct SavedPlaceRow: View {
             }
         }
     }
-    
-    private var navigationArrow: some View {
-        Image(systemName: "chevron.right")
-            .foregroundColor(.gray)
-    }
 }
 
 #Preview {
-    SavedPlacesView(viewModel: WeatherViewModel())
+    SavedPlacesView(viewModel: WeatherViewModel(), selectedTab: .constant(1))
 } 

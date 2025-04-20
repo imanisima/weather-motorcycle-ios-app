@@ -32,17 +32,22 @@ struct DailyForecastDetailView: View {
     }
     
     private var headerSection: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 16) {
             Text(formatDate(forecast.timestamp))
                 .font(Theme.Typography.title2)
                 .foregroundStyle(Theme.Colors.primaryText)
             
-            WeatherIcon(
-                condition: forecast.description,
-                temperature: forecast.temperature,
-                isDaytime: forecast.icon.hasSuffix("d"),
-                size: 80
-            )
+            // Large weather icon
+            Image(systemName: getWeatherSymbol(for: forecast.icon))
+                .symbolRenderingMode(.multicolor)
+                .font(.system(size: 80))
+                .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                .padding(16)
+                .background(
+                    Circle()
+                        .fill(Color.black)
+                        .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
+                )
             
             Text(forecast.description.capitalized)
                 .font(Theme.Typography.headline)
@@ -198,6 +203,23 @@ struct DailyForecastDetailView: View {
             return "Riding is possible but exercise caution. Be prepared for changing conditions and dress appropriately."
         case .unsafe:
             return "Riding is not recommended today. Severe weather conditions could make motorcycle operation dangerous."
+        }
+    }
+    
+    private func getWeatherSymbol(for iconCode: String) -> String {
+        switch iconCode {
+        case "01d": return "sun.max.fill"
+        case "01n": return "moon.fill"
+        case "02d": return "cloud.sun.fill"
+        case "02n": return "cloud.moon.fill"
+        case "03d", "03n", "04d", "04n": return "cloud.fill"
+        case "09d", "09n": return "cloud.rain.fill"
+        case "10d": return "cloud.sun.rain.fill"
+        case "10n": return "cloud.moon.rain.fill"
+        case "11d", "11n": return "cloud.bolt.rain.fill"
+        case "13d", "13n": return "snowflake"
+        case "50d", "50n": return "cloud.fog.fill"
+        default: return "cloud.fill"
         }
     }
 }

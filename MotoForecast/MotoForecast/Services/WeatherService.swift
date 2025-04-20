@@ -152,7 +152,7 @@ final class WeatherService: ObservableObject {
         }
     }
     
-    private func fetchHourlyForecast(for location: Location, units: String) async throws -> [WeatherData] {
+    public func fetchHourlyForecast(for location: Location, units: String) async throws -> [WeatherData] {
         let urlString = "\(baseURL)/forecast?lat=\(location.latitude)&lon=\(location.longitude)&appid=\(apiKey)&units=\(units)"
         
         guard let url = URL(string: urlString) else {
@@ -199,7 +199,7 @@ final class WeatherService: ObservableObject {
         }
     }
     
-    private func fetchDailyForecast(for location: Location, units: String) async throws -> [WeatherData] {
+    public func fetchDailyForecast(for location: Location, units: String) async throws -> [WeatherData] {
         let urlString = "\(baseURL)/forecast?lat=\(location.latitude)&lon=\(location.longitude)&appid=\(apiKey)&units=\(units)"
         
         guard let url = URL(string: urlString) else {
@@ -372,6 +372,13 @@ final class WeatherService: ObservableObject {
                 }
             }
         }
+    }
+    
+    func getWeather(for location: Location) async throws -> (current: WeatherData, hourly: [WeatherData], daily: [WeatherData]) {
+        let current = try await fetchCurrentWeather(for: location, units: "metric")
+        let hourly = try await fetchHourlyForecast(for: location, units: "metric")
+        let daily = try await fetchDailyForecast(for: location, units: "metric")
+        return (current, hourly, daily)
     }
 }
 

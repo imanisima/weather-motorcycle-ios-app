@@ -16,32 +16,32 @@ struct HourlyForecastDetailView: View {
                     temperatureCard
                     conditionsCard
                     ridingConditionsCard
+                    gearRecommendationsCard
                 }
                 .padding()
             }
         }
+        .navigationBarBackButtonHidden(false)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Done") {
-                    dismiss()
-                }
-            }
-        }
     }
     
     private var headerSection: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 16) {
             Text(formatDateTime(forecast.timestamp))
                 .font(Theme.Typography.title2)
                 .foregroundStyle(Theme.Colors.primaryText)
             
-            WeatherIcon(
-                condition: forecast.description,
-                temperature: forecast.temperature,
-                isDaytime: forecast.icon.hasSuffix("d"),
-                size: 80
-            )
+            // Large weather icon
+            Image(systemName: getWeatherSymbol(for: forecast.icon))
+                .symbolRenderingMode(.multicolor)
+                .font(.system(size: 80))
+                .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                .padding(16)
+                .background(
+                    Circle()
+                        .fill(Color.black)
+                        .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
+                )
             
             Text(forecast.description.capitalized)
                 .font(Theme.Typography.headline)
@@ -52,17 +52,35 @@ struct HourlyForecastDetailView: View {
     private var temperatureCard: some View {
         WeatherCard(title: "Temperature") {
             VStack(spacing: 16) {
-                temperatureItem(
-                    icon: "thermometer",
-                    title: "Temperature",
-                    value: "\(viewModel.formatTemperature(forecast.temperature))°"
-                )
+                HStack(spacing: 20) {
+                    temperatureItem(
+                        icon: "thermometer",
+                        title: "Temperature",
+                        value: "\(viewModel.formatTemperature(forecast.temperature))°"
+                    )
+                    
+                    temperatureItem(
+                        icon: "thermometer.sun",
+                        title: "Feels Like",
+                        value: "\(viewModel.formatTemperature(forecast.feelsLike))°"
+                    )
+                }
                 
-                temperatureItem(
-                    icon: "thermometer.sun",
-                    title: "Feels Like",
-                    value: "\(viewModel.formatTemperature(forecast.feelsLike))°"
-                )
+                if let high = forecast.highTemp, let low = forecast.lowTemp {
+                    HStack(spacing: 20) {
+                        temperatureItem(
+                            icon: "thermometer.high",
+                            title: "High",
+                            value: "\(viewModel.formatTemperature(high))°"
+                        )
+                        
+                        temperatureItem(
+                            icon: "thermometer.low",
+                            title: "Low",
+                            value: "\(viewModel.formatTemperature(low))°"
+                        )
+                    }
+                }
             }
         }
     }
@@ -121,6 +139,41 @@ struct HourlyForecastDetailView: View {
         }
     }
     
+    private var gearRecommendationsCard: some View {
+        WeatherCard(title: "Gear Recommendations") {
+            VStack(spacing: 16) {
+                ForEach(forecast.getRecommendedGear(), id: \.category) { recommendation in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(recommendation.category)
+                            .font(Theme.Typography.headline)
+                            .foregroundStyle(Theme.Colors.primaryText)
+                        
+                        Text(recommendation.reason)
+                            .font(Theme.Typography.footnote)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        
+                        ForEach(recommendation.items, id: \.self) { item in
+                            HStack(spacing: 8) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(Theme.Colors.accent)
+                                    .font(.system(size: 12))
+                                
+                                Text(item)
+                                    .font(Theme.Typography.body)
+                                    .foregroundStyle(Theme.Colors.primaryText)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 8)
+                    
+                    if recommendation.category != forecast.getRecommendedGear().last?.category {
+                        Divider()
+                    }
+                }
+            }
+        }
+    }
+    
     private func temperatureItem(icon: String, title: String, value: String) -> some View {
         VStack(spacing: 8) {
             Image(systemName: icon)
@@ -152,6 +205,23 @@ struct HourlyForecastDetailView: View {
             return "Riding is possible but exercise caution. Be prepared for changing conditions and dress appropriately."
         case .unsafe:
             return "Riding is not recommended at this time. Severe weather conditions could make motorcycle operation dangerous."
+        }
+    }
+    
+    private func getWeatherSymbol(for iconCode: String) -> String {
+        switch iconCode {
+        case "01d": return "sun.max.fill"
+        case "01n": return "moon.fill"
+        case "02d": return "cloud.sun.fill"
+        case "02n": return "cloud.moon.fill"
+        case "03d", "03n", "04d", "04n": return "cloud.fill"
+        case "09d", "09n": return "cloud.rain.fill"
+        case "10d": return "cloud.sun.rain.fill"
+        case "10n": return "cloud.moon.rain.fill"
+        case "11d", "11n": return "cloud.bolt.rain.fill"
+        case "13d", "13n": return "snowflake"
+        case "50d", "50n": return "cloud.fog.fill"
+        default: return "cloud.fill"
         }
     }
 }

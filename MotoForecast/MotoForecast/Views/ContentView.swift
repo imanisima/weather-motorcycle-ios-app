@@ -11,18 +11,21 @@ import Charts
 struct ContentView: View {
     @StateObject private var viewModel = WeatherViewModel()
     @State private var showingLocationSearch = false
+    @State private var selectedTab = 0
     
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             WeatherView(viewModel: viewModel)
                 .tabItem {
                     Label("Weather", systemImage: "cloud.sun.fill")
                 }
+                .tag(0)
             
-            SavedPlacesView(viewModel: viewModel)
+            SavedPlacesView(viewModel: viewModel, selectedTab: $selectedTab)
                 .tabItem {
                     Label("Saved Places", systemImage: "star.fill")
                 }
+                .tag(1)
             
             NavigationView {
                 SettingsView(viewModel: viewModel)
@@ -30,6 +33,7 @@ struct ContentView: View {
             .tabItem {
                 Label("Settings", systemImage: "gearshape.fill")
             }
+            .tag(2)
         }
         .tint(Theme.Colors.accent)
     }

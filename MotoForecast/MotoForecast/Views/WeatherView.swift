@@ -4,29 +4,50 @@ struct WeatherView: View {
     @ObservedObject var viewModel: WeatherViewModel
     @State private var showingSettings = false
     @State private var showingLocationSearch = false
-    @State private var showingWelcomeScreen = true
     
     var body: some View {
         NavigationView {
             ZStack {
-                if showingWelcomeScreen {
-                    WelcomeView(isPresented: $showingWelcomeScreen) {
+                if viewModel.shouldShowWelcomeScreen {
+                    WelcomeView(isPresented: .constant(true)) {
                         Task {
                             await viewModel.loadLastLocation()
-                            showingWelcomeScreen = false
+                            viewModel.shouldShowWelcomeScreen = false
                         }
                     }
                 } else {
                     // Dynamic weather gradient background
                     if let currentWeather = viewModel.currentWeather {
-                        WeatherGradient(
-                            temperature: currentWeather.temperature,
-                            weatherCondition: currentWeather.description,
-                            isDaytime: currentWeather.icon.hasSuffix("d")
+                        let description = currentWeather.description.lowercased()
+                        if description.contains("clear") || 
+                           description.contains("few clouds") || 
+                           description.contains("scattered clouds") {
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.4, green: 0.7, blue: 1.0), // Light blue
+                                    Color(red: 0.2, green: 0.5, blue: 0.9), // Medium blue
+                                    Color(red: 0.1, green: 0.3, blue: 0.8)  // Deep blue
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .ignoresSafeArea()
+                        } else {
+                            WeatherGradient(
+                                temperature: currentWeather.temperature,
+                                weatherCondition: currentWeather.description,
+                                isDaytime: currentWeather.icon.hasSuffix("d")
+                            )
+                            .ignoresSafeArea()
+                        }
+                    } else {
+                        // Default gradient while loading
+                        LinearGradient(
+                            colors: [Color.blue.opacity(0.6), Color.blue.opacity(0.3)],
+                            startPoint: .top,
+                            endPoint: .bottom
                         )
                         .ignoresSafeArea()
-                    } else {
-                        Color.black.opacity(0.9).ignoresSafeArea()
                     }
                     
                     // Semi-transparent overlay for better text contrast
@@ -42,18 +63,25 @@ struct WeatherView: View {
                                     .cornerRadius(12)
                             }
                             
-                            // Current weather section
-                            if let currentWeather = viewModel.currentWeather {
-                                currentWeatherSection(currentWeather)
-                            }
-                            
-                            // Daily forecast
-                            if !viewModel.dailyForecast.isEmpty {
-                                dailyForecastSection
+                            if viewModel.isLoading {
+                                loadingView
+                            } else {
+                                // Current weather section
+                                if let currentWeather = viewModel.currentWeather {
+                                    currentWeatherSection(currentWeather)
+                                }
+                                
+                                // Daily forecast
+                                if !viewModel.dailyForecast.isEmpty {
+                                    dailyForecastSection
+                                }
                             }
                         }
                         .padding(Theme.Layout.screenPadding)
                         .foregroundColor(.black)
+                    }
+                    .refreshable {
+                        await viewModel.refreshWeather()
                     }
                 }
             }
@@ -65,11 +93,25 @@ struct WeatherView: View {
                 SettingsView(viewModel: viewModel)
             }
             .task {
-                if !showingWelcomeScreen {
+                if !viewModel.shouldShowWelcomeScreen {
                     await viewModel.loadLastLocation()
                 }
             }
         }
+    }
+    
+    private var loadingView: some View {
+        VStack(spacing: 20) {
+            ProgressView()
+                .scaleEffect(1.5)
+                .tint(.white)
+            
+            Text("Loading weather data...")
+                .font(.headline)
+                .foregroundColor(.white)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
     }
     
     private func locationHeader(_ location: Location) -> some View {
@@ -163,13 +205,8 @@ struct WeatherView: View {
         WeatherCard(title: "") {
             VStack(spacing: 16) {
                 HStack {
-                    Image(systemName: "bicycle")
-                        .font(.system(size: Theme.Layout.iconSize))
-                        .foregroundStyle(.primary)
-                        .symbolEffect(.bounce, options: .repeating)
-                        .accessibility(hidden: true)
                     
-                    Text("Current Riding Condition")
+                    Text("Current Riding Conditions")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(.primary)
                     
@@ -181,7 +218,7 @@ struct WeatherView: View {
                 // Add explanation text
                 Text(getRidingConditionExplanation(weather.ridingCondition))
                     .font(.system(size: 14, weight: .regular))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(16)
@@ -205,14 +242,26 @@ struct WeatherView: View {
     
     private var hourlyForecastView: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Hourly Forecast")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.primary)
-                .padding(.leading, 4)
+            // Text("Hourly Forecast")
+            //     .font(.title3.weight(.semibold))
+            //     .foregroundStyle(.primary)
+            //     .padding(.leading, 4)
             
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 16) {
-                    ForEach(Array(viewModel.hourlyForecast.enumerated()), id: \.element.id) { _, forecast in
+                    let calendar = Calendar.current
+                    let now = Date()
+                    // Get the start of the current hour
+                    let currentHourStart = calendar.date(bySetting: .minute, value: 0, of: now)!
+                    
+                    let filteredForecasts = viewModel.hourlyForecast.filter { forecast in
+                        // Round down forecast time to the hour for comparison
+                        let forecastHourStart = calendar.date(bySetting: .minute, value: 0, of: forecast.timestamp)!
+                        return forecastHourStart >= currentHourStart &&
+                               forecast.timestamp <= now.addingTimeInterval(24 * 3600)
+                    }.prefix(24) // Ensure we only show 24 hours
+                    
+                    ForEach(Array(filteredForecasts), id: \.id) { forecast in
                         hourlyForecastItemView(forecast)
                     }
                 }
@@ -241,7 +290,7 @@ struct WeatherView: View {
                     .padding(8)
                     .background(
                         Circle()
-                            .fill(Color(.tertiarySystemBackground))
+                            .fill(Color.black)
                             .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
                     )
                     .accessibilityLabel(forecast.description)
@@ -326,12 +375,6 @@ struct WeatherView: View {
                 Divider()
                     .background(Color.white.opacity(0.2))
 
-                let windows = findSafeRidingWindow()
-                
-                if !windows.isEmpty {
-                    recommendedWindowView(windows: windows)
-                }
-                
                 if getDailyOutlook().rating.contains("Caution") {
                     cautionView
                 }
@@ -341,50 +384,198 @@ struct WeatherView: View {
     
     private func currentRidingStatusView(_ weather: WeatherData) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Can I go riding right now?")
-                .font(.title2.bold())
-                .foregroundStyle(.primary)
+            // Text("🏍️ Rider Insights")
+            //     .font(.title2.bold())
+            //     .foregroundStyle(.primary)
             
+            // Current Conditions Section
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 12) {
-                    Image(systemName: weather.ridingCondition == .good ? "checkmark.circle.fill" : 
-                                   weather.ridingCondition == .moderate ? "exclamationmark.triangle.fill" : 
-                                   "xmark.circle.fill")
-                        .font(.system(size: 24))
-                        .foregroundColor(weather.ridingCondition == .good ? .green :
-                                       weather.ridingCondition == .moderate ? .yellow :
-                                       .red)
-                    
-                    Text(weather.ridingCondition == .good ? "Yes! Conditions are great" :
-                         weather.ridingCondition == .moderate ? "Yes, but be cautious" :
-                         "Not recommended")
+                HStack {
+                    Text(" 🏍️ Riding Conditions")
                         .font(.headline)
+                        .foregroundStyle(.primary)
+                    
+                    Spacer()
+                    
+                    RidingConditionPill(condition: weather.ridingCondition)
+                }
+                
+                let tempF = weather.temperature * 9/5 + 32
+                let windMph = weather.windSpeed * 2.237
+                
+                Text("• \(Int(round(tempF)))°F, \(getWindDescription(windMph))")
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                
+                Text("• \(Int(weather.precipitation))% chance of precipitation")
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                
+                if let visibility = weather.visibility {
+                    Text("• Visibility: \(getVisibilityDescription(visibility))")
+                        .font(.subheadline)
                         .foregroundStyle(.primary)
                 }
             }
             
-            Text("Current factors:")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            Divider()
             
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(getRatingExplanation(for: weather), id: \.self) { point in
-                    HStack(alignment: .top, spacing: 8) {
-                        Circle()
-                            .fill(Theme.Colors.accent)
-                            .frame(width: 6, height: 6)
-                            .padding(.top, 6)
-                        
-                        Text(point)
+            // Weather Alerts Section
+            if !getWeatherAlerts(weather).isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("⚠️ Weather Alerts")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    
+                    ForEach(getWeatherAlerts(weather), id: \.self) { alert in
+                        Text("• \(alert)")
                             .font(.subheadline)
                             .foregroundStyle(.primary)
                     }
                 }
+                
+                Divider()
             }
+            
+            // Comfort & Safety Section
+            VStack(alignment: .leading, spacing: 8) {
+                Text("🚦 Comfort & Safety")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                
+                ForEach(getComfortAndSafety(weather), id: \.self) { point in
+                    Text("• \(point)")
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                }
+            }
+            
+            if let duration = getRideDuration() {
+                Divider()
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("⏳ Ride Window")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    
+                    Text("• \(duration)")
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                }
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.tertiarySystemBackground).opacity(0.5))
+        .cornerRadius(12)
+    }
+    
+    private func getWindDescription(_ windMph: Double) -> String {
+        switch windMph {
+        case 0..<5:
+            return "calm winds"
+        case 5..<10:
+            return "light breeze (\(Int(round(windMph))) mph)"
+        case 10..<15:
+            return "moderate winds (\(Int(round(windMph))) mph)"
+        case 15..<25:
+            return "breezy (\(Int(round(windMph))) mph)"
+        default:
+            return "strong winds (\(Int(round(windMph))) mph)"
         }
     }
     
-    private func getRidingDuration() -> String? {
+    private func getVisibilityDescription(_ visibility: Double) -> String {
+        let visibilityMiles = visibility * 0.621371
+        switch visibilityMiles {
+        case 0..<2:
+            return "Poor (\(Int(round(visibilityMiles))) miles)"
+        case 2..<5:
+            return "Moderate (\(Int(round(visibilityMiles))) miles)"
+        default:
+            return "Excellent (\(Int(round(visibilityMiles)))+ miles)"
+        }
+    }
+    
+    private func getWeatherAlerts(_ weather: WeatherData) -> [String] {
+        var alerts: [String] = []
+        let tempF = weather.temperature * 9/5 + 32
+        let windMph = weather.windSpeed * 2.237
+        
+        // Temperature alerts
+        if tempF > 95 {
+            alerts.append("Extreme heat warning - risk of dehydration")
+        } else if tempF < 40 {
+            alerts.append("Cold temperature warning - risk of ice")
+        }
+        
+        // Wind alerts
+        if windMph > 25 {
+            alerts.append("Strong wind warning - difficult handling conditions")
+        }
+        
+        // Rain alerts
+        if weather.precipitation > 50 {
+            alerts.append("High chance of rain - prepare for wet conditions")
+        }
+        
+        // Visibility alerts
+        if let visibility = weather.visibility {
+            let visibilityMiles = visibility * 0.621371
+            if visibilityMiles < 2 {
+                alerts.append("Poor visibility conditions")
+            }
+        }
+        
+        // Thunderstorm check
+        if weather.description.lowercased().contains("thunder") {
+            alerts.append("Thunderstorm warning - seek shelter")
+        }
+        
+        return alerts
+    }
+    
+    private func getComfortAndSafety(_ weather: WeatherData) -> [String] {
+        var points: [String] = []
+        let tempF = weather.temperature * 9/5 + 32
+        let windMph = weather.windSpeed * 2.237
+        
+        // Temperature comfort
+        if tempF >= 65 && tempF <= 85 {
+            points.append("Temperature is in the comfort zone")
+        } else if tempF > 85 {
+            points.append("Consider mesh gear for ventilation")
+        } else if tempF < 65 {
+            points.append("Consider wearing additional layers")
+        }
+        
+        // Wind effects
+        if windMph > 15 {
+            points.append("Wind may affect handling - maintain firm grip")
+        }
+        
+        // Road conditions
+        if weather.precipitation > 30 {
+            points.append("Roads may be wet - reduce speed and increase following distance")
+        }
+        
+        // UV considerations
+        if let uv = weather.uvIndex, uv > 5 {
+            points.append("High UV index - wear sun protection")
+        }
+        
+        // Visibility recommendations
+        if let visibility = weather.visibility {
+            let visibilityMiles = visibility * 0.621371
+            if visibilityMiles < 5 {
+                points.append("Use high visibility gear")
+            }
+        }
+        
+        return points
+    }
+    
+    private func getRideDuration() -> String? {
         let forecasts = viewModel.hourlyForecast
         guard !forecasts.isEmpty else { return nil }
         
@@ -415,37 +606,25 @@ struct WeatherView: View {
         
         if consecutiveGoodHours > 0 {
             if let badWeatherIndex = firstBadWeatherIndex {
-                let formatter = DateFormatter()
-                formatter.dateFormat = viewModel.use24HourFormat ? "HH:mm" : "h:mm a"
                 let badWeatherTime = forecasts[badWeatherIndex].timestamp
-                return "Good riding conditions for \(consecutiveGoodHours) hour\(consecutiveGoodHours > 1 ? "s" : "") (until \(formatter.string(from: badWeatherTime)))"
+                let calendar = Calendar.current
+                let now = Date()
+                
+                // Check if the bad weather time is on a different day
+                if !calendar.isDate(badWeatherTime, inSameDayAs: now) {
+                    let formatter = DateFormatter()
+                    formatter.dateFormat = viewModel.use24HourFormat ? "MM/dd HH:mm" : "MM/dd h:mm a"
+                    return "Good riding conditions for \(consecutiveGoodHours) hour\(consecutiveGoodHours > 1 ? "s" : "") until \(formatter.string(from: badWeatherTime))"
+                } else {
+                    let formatter = DateFormatter()
+                    formatter.dateFormat = viewModel.use24HourFormat ? "HH:mm" : "h:mm a"
+                    return "Good riding conditions for \(consecutiveGoodHours) hour\(consecutiveGoodHours > 1 ? "s" : "") (until \(formatter.string(from: badWeatherTime)))"
+                }
             } else {
                 return "Good riding conditions for at least \(consecutiveGoodHours) hour\(consecutiveGoodHours > 1 ? "s" : "")"
             }
         }
         return nil
-    }
-    
-    private func recommendedWindowView(windows: [(start: Date, end: Date)]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(windows, id: \.start) { window in
-                HStack {
-                    Image(systemName: "clock.fill")
-                        .foregroundColor(.green)
-                    Text("\(formatHour(window.start)) - \(formatHour(window.end))")
-                        .font(.title2.bold())
-                        .foregroundStyle(.primary)
-                }
-            }
-            
-            Text("Weather conditions are optimal during these time windows")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.tertiarySystemBackground).opacity(0.5))
-        .cornerRadius(12)
     }
     
     private var cautionView: some View {
@@ -487,11 +666,11 @@ struct WeatherView: View {
     }
     
     private var dailyForecastSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("5-Day Forecast")
-                .font(Theme.Typography.title3)
-                .foregroundStyle(.primary)
-                .padding(.leading, 4)
+        VStack(alignment: .leading, spacing: 12) {
+            // Text("5-Day Forecast")
+            //     .font(Theme.Typography.title3)
+            //     .foregroundStyle(.primary)
+            //     .padding(.leading, 4)
             
             let bestDay = viewModel.dailyForecast.max(by: { $0.ridingConfidence < $1.ridingConfidence })
             dailyForecastList(bestDay: bestDay)
@@ -538,7 +717,7 @@ struct WeatherView: View {
                     .padding(6)
                     .background(
                         Circle()
-                            .fill(Color(.tertiarySystemBackground))
+                            .fill(Color.black)
                             .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
                     )
                     
@@ -586,8 +765,8 @@ struct WeatherView: View {
     private var bestDayIndicator: some View {
         HStack {
             Image(systemName: "medal.fill")
-                .foregroundStyle(.primary)
-                .accessibility(hidden: true)
+                .foregroundStyle(.yellow)
+                .symbolEffect(.bounce)
             Text("Best Day to Ride")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.primary)
@@ -596,7 +775,11 @@ struct WeatherView: View {
         .padding(.vertical, 4)
         .background(
             Capsule()
-                .fill(Color(.tertiarySystemBackground))
+                .fill(Color.green.opacity(0.2))
+                .overlay(
+                    Capsule()
+                        .strokeBorder(Color.green, lineWidth: 1)
+                )
         )
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 4)
@@ -743,7 +926,6 @@ struct WeatherView: View {
         
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
-        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!
         
         // Filter forecasts to only include today's
         let todaysForecasts = forecasts.filter { forecast in
@@ -754,9 +936,21 @@ struct WeatherView: View {
         var windows: [(start: Date, end: Date)] = []
         var currentStart: Date? = nil
         
+        // Check if we have consistently good conditions all day
+        let allGoodConditions = todaysForecasts.allSatisfy { forecast in
+            let score = calculateWindowScore(forecast)
+            return score >= 55  // Lowered threshold for good conditions
+        }
+        
+        if allGoodConditions && !todaysForecasts.isEmpty {
+            // If conditions are good all day, return one window for the entire day
+            return [(todaysForecasts[0].timestamp, todaysForecasts.last!.timestamp)]
+        }
+        
+        // Otherwise, find specific good windows
         for (index, forecast) in todaysForecasts.enumerated() {
             let score = calculateWindowScore(forecast)
-            let isGoodConditions = score >= 70 // Only consider windows with good conditions
+            let isGoodConditions = score >= 55  // Lowered threshold for good conditions
             
             if isGoodConditions {
                 if currentStart == nil {
@@ -788,36 +982,51 @@ struct WeatherView: View {
     private func calculateWindowScore(_ forecast: WeatherData) -> Int {
         var score = 100
         
+        // Weather condition bonus
+        let description = forecast.description.lowercased()
+        if description.contains("clear") || 
+           description.contains("few clouds") || 
+           description.contains("scattered clouds") ||
+           description.contains("broken clouds") {
+            score += 15  // Increased bonus for clear conditions
+        }
+        
         // Temperature impact (in Fahrenheit)
         let tempF = forecast.temperature * 9/5 + 32
-        if tempF < 50 {
-            score -= 30  // Cold conditions
-        } else if tempF < 60 {
-            score -= 15  // Cool conditions
+        if tempF < 45 {
+            score -= 40  // Very cold conditions
+        } else if tempF < 50 {
+            score -= 20  // Cold conditions
+        } else if tempF > 95 {
+            score -= 30  // Extreme heat
         } else if tempF > 90 {
-            score -= 25  // Extreme heat
-        } else if tempF > 80 {
-            score -= 10  // Warm conditions
+            score -= 15  // Very warm conditions
+        } else if tempF > 85 {
+            score -= 5   // Warm but manageable
         }
+        // Temperatures between 50-85F are considered ideal for riding
         
         // Wind impact (in mph)
         let windMph = forecast.windSpeed * 2.237
         if windMph > 25 {
-            score -= 25  // Strong winds
+            score -= 30  // Strong winds
         } else if windMph > 20 {
-            score -= 15  // Moderate winds
+            score -= 20  // Moderate winds
         } else if windMph > 15 {
-            score -= 5   // Light winds
+            score -= 10  // Light winds
         }
         
         // Precipitation impact
-        if forecast.precipitation >= 30 {
+        if forecast.precipitation >= 50 {
             score -= 100  // Not suitable for riding
+        } else if forecast.precipitation >= 40 {
+            score -= 50  // High risk
+        } else if forecast.precipitation >= 30 {
+            score -= 30  // Moderate risk
         } else if forecast.precipitation >= 20 {
-            score -= 40  // High risk
-        } else if forecast.precipitation >= 10 {
-            score -= 20  // Moderate risk
+            score -= 15  // Low risk
         }
+        // Precipitation < 20% is considered good
         
         // Visibility impact
         if let visibility = forecast.visibility {
@@ -825,9 +1034,9 @@ struct WeatherView: View {
             if visibilityMiles < 1 {
                 score -= 100  // Not suitable
             } else if visibilityMiles < 3 {
-                score -= 30  // Poor visibility
+                score -= 40  // Poor visibility
             } else if visibilityMiles < 5 {
-                score -= 15  // Reduced visibility
+                score -= 20  // Reduced visibility
             }
         }
         
@@ -840,9 +1049,9 @@ struct WeatherView: View {
         
         // UV Index impact
         if let uv = forecast.uvIndex {
-            if uv > 10 {
-                score -= 15  // Extreme UV
-            } else if uv > 7 {
+            if uv > 11 {
+                score -= 20  // Extreme UV
+            } else if uv > 8 {
                 score -= 10  // Very high UV
             }
         }
@@ -852,7 +1061,7 @@ struct WeatherView: View {
             score -= 100  // Not suitable
         }
         
-        return max(0, score)
+        return max(0, min(100, score))  // Ensure score stays between 0 and 100
     }
     
     private func formatHour(_ date: Date) -> String {
@@ -918,17 +1127,20 @@ struct WeatherView: View {
     
     private func getWeatherSymbol(for iconCode: String) -> String {
         switch iconCode {
-        case "01d": return "sun.max.fill"
-        case "01n": return "moon.fill"
-        case "02d": return "cloud.sun.fill"
-        case "02n": return "cloud.moon.fill"
-        case "03d", "03n", "04d", "04n": return "cloud.fill"
-        case "09d", "09n": return "cloud.rain.fill"
-        case "10d": return "cloud.sun.rain.fill"
-        case "10n": return "cloud.moon.rain.fill"
-        case "11d", "11n": return "cloud.bolt.rain.fill"
-        case "13d", "13n": return "snowflake"
-        case "50d", "50n": return "cloud.fog.fill"
+        case "01d": return "sun.max.fill"  // Clear sky day
+        case "01n": return "moon.fill"     // Clear sky night
+        case "02d": return "cloud.sun.fill"  // Few clouds day
+        case "02n": return "cloud.moon.fill"  // Few clouds night
+        case "03d": return "sun.max.fill"  // Scattered clouds day
+        case "03n": return "cloud.moon.fill"  // Scattered clouds night
+        case "04d": return "cloud.fill"  // Broken/overcast clouds
+        case "04n": return "cloud.fill"  // Broken/overcast clouds
+        case "09d", "09n": return "cloud.rain.fill"  // Shower rain
+        case "10d": return "cloud.sun.rain.fill"    // Rain day
+        case "10n": return "cloud.moon.rain.fill"   // Rain night
+        case "11d", "11n": return "cloud.bolt.rain.fill"  // Thunderstorm
+        case "13d", "13n": return "snowflake"  // Snow
+        case "50d", "50n": return "cloud.fog.fill"  // Mist/fog
         default: return "cloud.fill"
         }
     }
@@ -972,7 +1184,7 @@ struct WeatherView: View {
             HStack(spacing: 4) {
                 Circle()
                     .fill(color)
-                    .frame(width: 8, height: 8)
+                    .frame(width: 12, height: 12)
                 
                 Text(condition.rawValue)
                     .font(Theme.Typography.caption)
@@ -1023,6 +1235,193 @@ struct WeatherView: View {
                     }
             }
         }
+    }
+    
+    private struct RidingWindow {
+        let canRideNow: Bool
+        let currentWindowDuration: TimeInterval?
+        let nextWindow: (start: Date, end: Date)?
+        let deteriorationReason: String?
+        let conditions: [String]
+    }
+
+    private func analyzeRidingWindow() -> RidingWindow? {
+        let forecasts = viewModel.hourlyForecast
+        guard !forecasts.isEmpty else { return nil }
+        
+        let calendar = Calendar.current
+        let now = Date()
+        
+        // Filter to today's forecasts
+        let todayForecasts = forecasts.filter { forecast in
+            calendar.isDate(forecast.timestamp, inSameDayAs: now)
+        }
+        
+        guard !todayForecasts.isEmpty else { return nil }
+        
+        var conditions: [String] = []
+        var canRideNow = true
+        var deteriorationReason: String? = nil
+        var currentWindowEnd: Date? = nil
+        var nextWindowStart: Date? = nil
+        var nextWindowEnd: Date? = nil
+        
+        // Analyze current conditions
+        if let currentForecast = todayForecasts.first {
+            let tempF = currentForecast.temperature * 9/5 + 32
+            let windMph = currentForecast.windSpeed * 2.237
+            
+            // Check temperature
+            if tempF < 40 {
+                canRideNow = false
+                conditions.append("Temperature too low (\(Int(tempF))°F)")
+            } else if tempF > 95 {
+                canRideNow = false
+                conditions.append("Temperature too high (\(Int(tempF))°F)")
+            }
+            
+            // Check wind
+            if windMph > 25 {
+                canRideNow = false
+                conditions.append("Wind speed too high (\(Int(windMph)) mph)")
+            }
+            
+            // Check precipitation
+            if currentForecast.precipitation > 50 {
+                canRideNow = false
+                conditions.append("High chance of rain (\(Int(currentForecast.precipitation))%)")
+            }
+            
+            // Check visibility
+            if let visibility = currentForecast.visibility {
+                let visibilityMiles = visibility * 0.621371
+                if visibilityMiles < 2 {
+                    canRideNow = false
+                    conditions.append("Poor visibility (\(Int(visibilityMiles)) miles)")
+                }
+            }
+        }
+        
+        // Find when conditions will deteriorate if currently good
+        if canRideNow {
+            for (index, forecast) in todayForecasts.enumerated() {
+                let tempF = forecast.temperature * 9/5 + 32
+                let windMph = forecast.windSpeed * 2.237
+                
+                let badConditions = tempF < 40 || tempF > 95 ||
+                                  windMph > 25 ||
+                                  forecast.precipitation > 50 ||
+                                  (forecast.visibility.map { $0 * 0.621371 < 2 } ?? false)
+                
+                if badConditions {
+                    currentWindowEnd = forecast.timestamp
+                    
+                    // Determine reason for deterioration
+                    if tempF < 40 {
+                        deteriorationReason = "temperature dropping to \(Int(tempF))°F"
+                    } else if tempF > 95 {
+                        deteriorationReason = "temperature rising to \(Int(tempF))°F"
+                    } else if windMph > 25 {
+                        deteriorationReason = "wind speed increasing to \(Int(windMph)) mph"
+                    } else if forecast.precipitation > 50 {
+                        deteriorationReason = "rain probability increasing to \(Int(forecast.precipitation))%"
+                    } else {
+                        deteriorationReason = "visibility decreasing"
+                    }
+                    
+                    // Look for next good window
+                    if index < todayForecasts.count - 1 {
+                        for laterForecast in todayForecasts[(index + 1)...] {
+                            let laterTempF = laterForecast.temperature * 9/5 + 32
+                            let laterWindMph = laterForecast.windSpeed * 2.237
+                            
+                            let goodConditions = laterTempF >= 40 && laterTempF <= 95 &&
+                                               laterWindMph <= 25 &&
+                                               laterForecast.precipitation <= 50 &&
+                                               (laterForecast.visibility.map { $0 * 0.621371 >= 2 } ?? true)
+                            
+                            if goodConditions {
+                                nextWindowStart = laterForecast.timestamp
+                                // Find end of next window
+                                let startIndex = todayForecasts.distance(from: todayForecasts.startIndex, to: index + 1)
+                                for endIndex in startIndex..<todayForecasts.count {
+                                    let endForecast = todayForecasts[endIndex]
+                                    let endTempF = endForecast.temperature * 9/5 + 32
+                                    let endWindMph = endForecast.windSpeed * 2.237
+                                    
+                                    let badConditions = endTempF < 40 || endTempF > 95 ||
+                                                      endWindMph > 25 ||
+                                                      endForecast.precipitation > 50 ||
+                                                      (endForecast.visibility.map { $0 * 0.621371 < 2 } ?? false)
+                                    
+                                    if badConditions {
+                                        nextWindowEnd = endForecast.timestamp
+                                        break
+                                    }
+                                }
+                                if nextWindowEnd == nil {
+                                    nextWindowEnd = todayForecasts.last?.timestamp
+                                }
+                                break
+                            }
+                        }
+                    }
+                    break
+                }
+            }
+            
+            // If no deterioration found, window extends to last forecast
+            if currentWindowEnd == nil {
+                currentWindowEnd = todayForecasts.last?.timestamp
+            }
+        } else {
+            // If current conditions are bad, look for next good window
+            for forecast in todayForecasts {
+                let tempF = forecast.temperature * 9/5 + 32
+                let windMph = forecast.windSpeed * 2.237
+                
+                let goodConditions = tempF >= 40 && tempF <= 95 &&
+                                   windMph <= 25 &&
+                                   forecast.precipitation <= 50 &&
+                                   (forecast.visibility.map { $0 * 0.621371 >= 2 } ?? true)
+                
+                if goodConditions {
+                    nextWindowStart = forecast.timestamp
+                    // Find end of window
+                    let startIndex = todayForecasts.firstIndex { $0.timestamp == forecast.timestamp } ?? 0
+                    for endIndex in startIndex..<todayForecasts.count {
+                        let endForecast = todayForecasts[endIndex]
+                        let endTempF = endForecast.temperature * 9/5 + 32
+                        let endWindMph = endForecast.windSpeed * 2.237
+                        
+                        let badConditions = endTempF < 40 || endTempF > 95 ||
+                                          endWindMph > 25 ||
+                                          endForecast.precipitation > 50 ||
+                                          (endForecast.visibility.map { $0 * 0.621371 < 2 } ?? false)
+                        
+                        if badConditions {
+                            nextWindowEnd = endForecast.timestamp
+                            break
+                        }
+                    }
+                    if nextWindowEnd == nil {
+                        nextWindowEnd = todayForecasts.last?.timestamp
+                    }
+                    break
+                }
+            }
+        }
+        
+        let currentDuration = currentWindowEnd.map { $0.timeIntervalSince(now) }
+        let nextWindow = (nextWindowStart != nil && nextWindowEnd != nil) ? (nextWindowStart!, nextWindowEnd!) : nil
+        
+        return RidingWindow(
+            canRideNow: canRideNow,
+            currentWindowDuration: currentDuration,
+            nextWindow: nextWindow,
+            deteriorationReason: deteriorationReason,
+            conditions: conditions
+        )
     }
 }
 

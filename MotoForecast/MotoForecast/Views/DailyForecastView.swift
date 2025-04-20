@@ -62,8 +62,8 @@ struct DailyForecastView: View {
                                     
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text(day.description.capitalized)
-                                            .font(.subheadline)
-                                            .foregroundStyle(.primary)
+                                        .font(.system(size: 14, weight: .regular))
+                                        .foregroundStyle(.primary)
                                         
                                         WeatherDetailsView(day: day, viewModel: viewModel)
                                     }

@@ -70,38 +70,48 @@ struct WeatherData: Codable, Identifiable {
         // Calculate riding confidence based on weather conditions
         var score = 100
         
+        // Weather condition bonus
+        let desc = description.lowercased()
+        if desc.contains("clear") || 
+           desc.contains("few clouds") || 
+           desc.contains("scattered clouds") {
+            score += 10  // Bonus for great visibility conditions
+        }
+        
         // Temperature impact (in Fahrenheit)
         let tempF = temperature * 9/5 + 32
-        if tempF < 50 {
-            score -= 30  // Cold conditions - risk of frostbite or icy roads
-        } else if tempF < 60 {
-            score -= 15  // Cool conditions
-        } else if tempF > 90 {
-            score -= 25  // Extreme heat - discomfort and dehydration risks
-        } else if tempF > 80 {
-            score -= 10  // Warm conditions
+        if tempF < 45 {
+            score -= 30  // Very cold conditions
+        } else if tempF < 50 {
+            score -= 15  // Cold conditions
+        } else if tempF > 95 {
+            score -= 25  // Extreme heat
+        } else if tempF > 85 {
+            score -= 10  // Very warm conditions
         }
+        // Temperatures between 50-85F are considered good for riding
         
         // Wind impact (in mph)
         let windMph = windSpeed * 2.237
         if windMph > 25 {
-            score -= 25  // Strong gusts - difficult handling
+            score -= 25  // Strong winds
         } else if windMph > 20 {
             score -= 15  // Moderate winds
         } else if windMph > 15 {
             score -= 5   // Light winds
         }
         
-        // Precipitation impact - more granular
-        if precipitation >= 70 {
+        // Precipitation impact - more lenient
+        if precipitation >= 50 {
             score -= 40  // High chance of rain
-        } else if precipitation >= 50 {
+        } else if precipitation >= 40 {
             score -= 30  // Moderate to high chance
         } else if precipitation >= 30 {
             score -= 20  // Moderate chance
-        } else if precipitation >= 10 {
+        } else if precipitation >= 20 {
             score -= 10  // Low chance
         }
+        // Precipitation < 20% is considered acceptable
         
         // Visibility impact (in miles)
         if let visibilityValue = visibility {
@@ -117,16 +127,18 @@ struct WeatherData: Codable, Identifiable {
             score -= 10  // Penalize slightly for unknown visibility
         }
         
-        // Humidity impact
-        if humidity > 80 {
-            score -= 10  // High humidity reduces comfort
+        // Humidity impact - more lenient
+        if humidity > 90 {
+            score -= 15  // Very uncomfortable
+        } else if humidity > 80 {
+            score -= 5   // Slightly uncomfortable
         }
         
-        // UV Index impact
+        // UV Index impact - more lenient during daylight hours
         if let uv = uvIndex {
-            if uv > 10 {
-                score -= 15  // Extreme UV - high risk of sunburn and heat fatigue
-            } else if uv > 7 {
+            if uv > 11 {
+                score -= 15  // Extreme UV
+            } else if uv > 8 {
                 score -= 10  // Very high UV
             } else if uv > 5 {
                 score -= 5   // High UV
@@ -143,20 +155,20 @@ struct WeatherData: Codable, Identifiable {
             score -= 40  // Potential for icy roads
         }
         
-        return max(0, min(100, score))
+        return max(0, min(100, score))  // Ensure score stays between 0 and 100
     }
     
     var rideRating: RideRating {
         switch ridingConfidence {
-        case 90...100:
+        case 80...100:
             return .excellent
-        case 75..<90:
+        case 65..<80:
             return .good
-        case 60..<75:
+        case 50..<65:
             return .moderate
-        case 40..<60:
+        case 35..<50:
             return .fair
-        case 20..<40:
+        case 20..<35:
             return .poor
         default:
             return .unsafe
@@ -210,9 +222,9 @@ struct WeatherData: Codable, Identifiable {
     
     var ridingCondition: RidingCondition {
         switch ridingConfidence {
-        case 70...100:
+        case 55...100:
             return .good
-        case 40..<70:
+        case 35..<55:
             return .moderate
         default:
             return .unsafe

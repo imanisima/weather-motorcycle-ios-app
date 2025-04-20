@@ -44,9 +44,10 @@ struct AnimatedWeatherIcon: View {
     }
     
     var body: some View {
-        Image(systemName: systemImage)
+        Image(systemName: getWeatherSymbol(for: iconCode))
             .symbolRenderingMode(.multicolor)
             .font(.system(size: size))
+            .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
             .scaleEffect(isAnimating ? 1.1 : 1.0)
             .opacity(isAnimating ? 1.0 : 0.8)
             .animation(animation, value: isAnimating)
@@ -57,6 +58,26 @@ struct AnimatedWeatherIcon: View {
                 isAnimating = true
             }
             .accessibilityLabel(iconCode)
+    }
+    
+    private func getWeatherSymbol(for iconCode: String) -> String {
+        switch iconCode {
+        case "01d": return "sun.max.fill"  // Clear sky day
+        case "01n": return "moon.fill"     // Clear sky night
+        case "02d": return "sun.max.fill"  // Few clouds day
+        case "02n": return "cloud.moon.fill"  // Few clouds night
+        case "03d": return "sun.max.fill"  // Scattered clouds day
+        case "03n": return "cloud.moon.fill"  // Scattered clouds night
+        case "04d": return "cloud.fill"  // Broken/overcast clouds
+        case "04n": return "cloud.fill"  // Broken/overcast clouds
+        case "09d", "09n": return "cloud.rain.fill"  // Shower rain
+        case "10d": return "cloud.sun.rain.fill"    // Rain day
+        case "10n": return "cloud.moon.rain.fill"   // Rain night
+        case "11d", "11n": return "cloud.bolt.rain.fill"  // Thunderstorm
+        case "13d", "13n": return "snowflake"  // Snow
+        case "50d", "50n": return "cloud.fog.fill"  // Mist/fog
+        default: return "cloud.fill"
+        }
     }
 }
 

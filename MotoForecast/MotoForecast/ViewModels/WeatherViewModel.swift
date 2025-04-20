@@ -16,6 +16,13 @@ final class WeatherViewModel: ObservableObject {
     @Published private(set) var dailyForecast: [WeatherData] = []
     @Published private(set) var recentLocations: [RecentLocation] = []
     @Published private(set) var favoriteLocations: [Location] = []
+    @Published var shouldShowWelcomeScreen: Bool {
+        didSet {
+            if !shouldShowWelcomeScreen {
+                userDefaults.set(true, forKey: "hasSeenWelcomeScreen")
+            }
+        }
+    }
     @Published var temperatureUnit: TemperatureUnit = .fahrenheit {
         didSet {
             userDefaults.set(temperatureUnit == .celsius, forKey: "useCelsius")
@@ -54,6 +61,7 @@ final class WeatherViewModel: ObservableObject {
     private let userDefaults: UserDefaults
     private var locationWeatherCache: [String: WeatherData] = [:]
     private var refreshWeatherTask: Task<Void, Never>?
+    private var refreshTimer: Timer?
     
     // MARK: - Initialization
     init(weatherService: WeatherService, userDefaults: UserDefaults = .standard) {
@@ -66,10 +74,22 @@ final class WeatherViewModel: ObservableObject {
         self.useMetricSystem = userDefaults.bool(forKey: "useMetricSystem")
         self.useCelsius = userDefaults.bool(forKey: "useCelsius")
         
+        // Check if the welcome screen has been shown before
+        self.shouldShowWelcomeScreen = !userDefaults.bool(forKey: "hasSeenWelcomeScreen")
+        
+        // Load favorite locations
+        if let savedLocations = userDefaults.data(forKey: "favoriteLocations"),
+           let decoded = try? JSONDecoder().decode([Location].self, from: savedLocations) {
+            self.favoriteLocations = decoded
+        }
+        
         // Setup async tasks after initialization
         Task {
             await setup()
         }
+        
+        // Start automatic refresh timer
+        startRefreshTimer()
     }
     
     convenience init() {
@@ -80,6 +100,29 @@ final class WeatherViewModel: ObservableObject {
         await validateEnvironment()
         await loadLastLocation()
         await loadFavorites()
+    }
+    
+    deinit {
+        // Since this is called from deinit, we need to make sure it's run on the main thread
+        Task { @MainActor in
+            stopRefreshTimer()
+        }
+    }
+    
+    private func startRefreshTimer() {
+        // Update weather every 15 minutes
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 15 * 60, repeats: true) { [weak self] _ in
+            Task {
+                if let location = self?.currentLocation {
+                    await self?.refreshWeather(for: location)
+                }
+            }
+        }
+    }
+    
+    private func stopRefreshTimer() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
     }
     
     // MARK: - Public Methods
@@ -179,16 +222,75 @@ final class WeatherViewModel: ObservableObject {
         }
     }
     
+    @MainActor
     public func fetchWeather(for location: Location) async {
         isLoading = true
-        defer { isLoading = false }
         
-        await weatherService.fetchWeather(for: location, units: "metric")
+        do {
+            // First, quickly fetch and display current weather
+            let current = try await weatherService.fetchCurrentWeather(for: location, units: "metric")
+            self.currentWeather = current
+            
+            // Then fetch the rest concurrently
+            async let hourlyTask = weatherService.fetchHourlyForecast(for: location, units: "metric")
+            async let dailyTask = weatherService.fetchDailyForecast(for: location, units: "metric")
+            
+            // Wait for both to complete
+            let (hourly, daily) = try await (hourlyTask, dailyTask)
+            
+            // Update the UI
+            self.hourlyForecast = hourly
+            self.dailyForecast = daily
+            
+            // Cache the data
+            if let data = try? JSONEncoder().encode(current) {
+                userDefaults.set(data, forKey: "cachedCurrentWeather")
+            }
+            
+            errorMessage = nil
+        } catch {
+            // If there's an error, try to load cached data
+            if let cachedData = userDefaults.data(forKey: "cachedCurrentWeather"),
+               let cachedWeather = try? JSONDecoder().decode(WeatherData.self, from: cachedData) {
+                self.currentWeather = cachedWeather
+            }
+            self.errorMessage = error.localizedDescription
+        }
         
-        // Update published properties from the weather service
-        currentWeather = await weatherService.currentWeather
-        hourlyForecast = await weatherService.hourlyForecast
-        dailyForecast = await weatherService.dailyForecast
-        recentLocations = await weatherService.recentLocations
+        isLoading = false
+    }
+    
+    @MainActor
+    func refreshWeather(for location: Location) async {
+        do {
+            isLoading = true
+            let current = try await weatherService.fetchCurrentWeather(for: location, units: "metric")
+            self.currentWeather = current
+            
+            // Fetch the rest in the background
+            Task {
+                async let hourlyTask = weatherService.fetchHourlyForecast(for: location, units: "metric")
+                async let dailyTask = weatherService.fetchDailyForecast(for: location, units: "metric")
+                
+                do {
+                    let (hourly, daily) = try await (hourlyTask, dailyTask)
+                    self.hourlyForecast = hourly
+                    self.dailyForecast = daily
+                } catch {
+                    print("Error refreshing forecast data: \(error)")
+                }
+            }
+        } catch {
+            print("Error refreshing current weather: \(error)")
+        }
+        isLoading = false
+    }
+    
+    func fetchHourlyForecast(for location: Location) async throws -> [WeatherData] {
+        return try await weatherService.fetchHourlyForecast(for: location, units: "metric")
+    }
+    
+    func fetchDailyForecast(for location: Location) async throws -> [WeatherData] {
+        return try await weatherService.fetchDailyForecast(for: location, units: "metric")
     }
 } 
