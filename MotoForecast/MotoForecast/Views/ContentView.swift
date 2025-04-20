@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var showingLocationSearch = false
     @State private var selectedTab = 0
     @State private var isRefreshing = false
+    @State private var showingAlerts = false
     
     var body: some View {
         NavigationView {
@@ -48,22 +49,10 @@ struct ContentView: View {
                     Text("MotoForecast")
                         .font(.headline)
                 }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    if viewModel.isLoading {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle())
-                    } else {
-                        Button(action: {
-                            Task {
-                                await viewModel.manualRefresh()
-                            }
-                        }) {
-                            Image(systemName: "arrow.clockwise")
-                        }
-                    }
-                }
             }
+        }
+        .sheet(isPresented: $showingAlerts) {
+            ActiveWeatherAlertsView(alerts: viewModel.activeAlerts)
         }
     }
 }

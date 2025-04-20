@@ -14,6 +14,7 @@ final class WeatherViewModel: ObservableObject {
     @Published private(set) var currentWeather: WeatherData?
     @Published private(set) var hourlyForecast: [WeatherData] = []
     @Published private(set) var dailyForecast: [WeatherData] = []
+    @Published private(set) var activeAlerts: [WeatherAlert] = []
     @Published private(set) var recentLocations: [RecentLocation] = []
     @Published private(set) var favoriteLocations: [Location] = []
     @Published var shouldShowWelcomeScreen: Bool {
@@ -259,6 +260,99 @@ final class WeatherViewModel: ObservableObject {
         }
     }
     
+    private func generateWeatherAlerts() {
+        var newAlerts: [WeatherAlert] = []
+        
+        // Check current conditions
+        if let weather = currentWeather {
+            // Temperature alerts
+            let tempF = weather.temperature * 9/5 + 32
+            if tempF > 95 {
+                newAlerts.append(WeatherAlert(
+                    title: "Extreme Heat Warning",
+                    description: "Temperature exceeds 95°F. Risk of heat exhaustion and dehydration.",
+                    severity: .severe,
+                    start: Date(),
+                    end: Date().addingTimeInterval(3600 * 3),
+                    source: "MotoForecast",
+                    type: .extreme,
+                    location: currentLocation?.name ?? "Current Location"
+                ))
+            } else if tempF < 32 {
+                newAlerts.append(WeatherAlert(
+                    title: "Freezing Conditions",
+                    description: "Temperature below freezing. Risk of ice on roads.",
+                    severity: .severe,
+                    start: Date(),
+                    end: Date().addingTimeInterval(3600 * 3),
+                    source: "MotoForecast",
+                    type: .extreme,
+                    location: currentLocation?.name ?? "Current Location"
+                ))
+            }
+            
+            // Wind alerts
+            let windMph = weather.windSpeed * 2.237
+            if windMph > 30 {
+                newAlerts.append(WeatherAlert(
+                    title: "High Wind Warning",
+                    description: "Winds exceeding 30 mph. Difficult riding conditions.",
+                    severity: windMph > 45 ? .severe : .moderate,
+                    start: Date(),
+                    end: Date().addingTimeInterval(3600 * 2),
+                    source: "MotoForecast",
+                    type: .wind,
+                    location: currentLocation?.name ?? "Current Location"
+                ))
+            }
+            
+            // Rain alerts
+            if weather.precipitation > 70 {
+                newAlerts.append(WeatherAlert(
+                    title: "Heavy Rain Warning",
+                    description: "High probability of heavy rain. Reduced visibility and traction.",
+                    severity: .moderate,
+                    start: Date(),
+                    end: Date().addingTimeInterval(3600 * 2),
+                    source: "MotoForecast",
+                    type: .rain,
+                    location: currentLocation?.name ?? "Current Location"
+                ))
+            }
+            
+            // Visibility alerts
+            if let visibility = weather.visibility, visibility < 1 {
+                newAlerts.append(WeatherAlert(
+                    title: "Low Visibility Warning",
+                    description: "Visibility less than 1 mile. Exercise extreme caution.",
+                    severity: .severe,
+                    start: Date(),
+                    end: Date().addingTimeInterval(3600 * 2),
+                    source: "MotoForecast",
+                    type: .fog,
+                    location: currentLocation?.name ?? "Current Location"
+                ))
+            }
+            
+            // Thunderstorm check
+            if weather.description.lowercased().contains("thunder") {
+                newAlerts.append(WeatherAlert(
+                    title: "Thunderstorm Warning",
+                    description: "Thunderstorms in the area. Seek shelter immediately.",
+                    severity: .extreme,
+                    start: Date(),
+                    end: Date().addingTimeInterval(3600 * 2),
+                    source: "MotoForecast",
+                    type: .thunderstorm,
+                    location: currentLocation?.name ?? "Current Location"
+                ))
+            }
+        }
+        
+        // Update active alerts
+        activeAlerts = newAlerts
+    }
+    
     @MainActor
     public func fetchWeather(for location: Location) async {
         isLoading = true
@@ -283,6 +377,9 @@ final class WeatherViewModel: ObservableObject {
                 userDefaults.set(data, forKey: "cachedCurrentWeather")
                 userDefaults.set(Date(), forKey: "cachedWeatherTimestamp")
             }
+            
+            // Generate alerts after fetching new weather data
+            generateWeatherAlerts()
             
             // Then fetch the rest concurrently
             Task {

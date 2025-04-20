@@ -4,6 +4,7 @@ struct WeatherView: View {
     @ObservedObject var viewModel: WeatherViewModel
     @State private var showingSettings = false
     @State private var showingLocationSearch = false
+    @State private var showingAlerts = false
     
     var body: some View {
         NavigationView {
@@ -92,6 +93,9 @@ struct WeatherView: View {
             .sheet(isPresented: $showingSettings) {
                 SettingsView(viewModel: viewModel)
             }
+            .sheet(isPresented: $showingAlerts) {
+                ActiveWeatherAlertsView(alerts: viewModel.activeAlerts)
+            }
             .task {
                 if !viewModel.shouldShowWelcomeScreen {
                     await viewModel.loadLastLocation()
@@ -156,6 +160,12 @@ struct WeatherView: View {
         VStack(spacing: Theme.Layout.cardSpacing) {
             temperatureHeaderView(weather)
             weatherDescriptionView(weather)
+            
+            // Show alerts card if there are active alerts
+            if !viewModel.activeAlerts.isEmpty {
+                alertsCard
+            }
+            
             currentRidingConditionView(weather)
             
             if !viewModel.hourlyForecast.isEmpty {
@@ -1423,10 +1433,51 @@ struct WeatherView: View {
             conditions: conditions
         )
     }
+    
+    private var alertsCard: some View {
+        Button(action: { showingAlerts = true }) {
+            VStack(spacing: 12) {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                        .font(.title2)
+                    Text("Active Weather Alerts")
+                        .font(.headline)
+                    Spacer()
+                    Text("\(viewModel.activeAlerts.count)")
+                        .font(.subheadline.bold())
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.red)
+                        .foregroundColor(.white)
+                        .clipShape(Capsule())
+                }
+                
+                // Show most severe alert
+                if let mostSevere = viewModel.activeAlerts.min(by: { $0.severity.rawValue < $1.severity.rawValue }) {
+                    HStack {
+                        Image(systemName: mostSevere.type.icon)
+                            .foregroundStyle(Color(mostSevere.severity.color))
+                        Text(mostSevere.title)
+                            .font(.subheadline)
+                            .lineLimit(1)
+                        Spacer()
+                        Text("View All")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                        Image(systemName: "chevron.right")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding()
+            .background(Color(.secondarySystemBackground))
+            .cornerRadius(16)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
 }
 
 #Preview {
     WeatherView(viewModel: WeatherViewModel())
 } 
-
-
