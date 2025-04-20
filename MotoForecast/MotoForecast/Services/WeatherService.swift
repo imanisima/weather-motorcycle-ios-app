@@ -139,7 +139,8 @@ final class WeatherService: ObservableObject {
                 visibility: Double(weatherResponse.visibility) / 1000,
                 description: weatherResponse.weather.first?.description ?? "",
                 icon: weatherResponse.weather.first?.icon ?? "",
-                timestamp: Date()
+                timestamp: Date(),
+                uvIndex: weatherResponse.uvi
             )
             
         case 401:
@@ -184,7 +185,8 @@ final class WeatherService: ObservableObject {
                     visibility: Double(item.visibility) / 1000,
                     description: item.weather.first?.description ?? "",
                     icon: item.weather.first?.icon ?? "",
-                    timestamp: item.dt
+                    timestamp: item.dt,
+                    uvIndex: item.uvi
                 )
             }
             
@@ -245,6 +247,10 @@ final class WeatherService: ObservableObject {
                 Calendar.current.component(.hour, from: $0.dt) <= 15
             }) ?? forecasts[0]
             
+            // Calculate average UV index for the day
+            let uvIndices = forecasts.compactMap { $0.uvi }
+            let avgUvIndex = uvIndices.isEmpty ? nil : uvIndices.reduce(0, +) / Double(uvIndices.count)
+            
             return WeatherData(
                 id: UUID(),
                 temperature: midDayForecast.main.temp,
@@ -257,7 +263,8 @@ final class WeatherService: ObservableObject {
                 icon: midDayForecast.weather.first?.icon ?? "",
                 timestamp: date,
                 highTemp: maxTemp,
-                lowTemp: minTemp
+                lowTemp: minTemp,
+                uvIndex: avgUvIndex
             )
         }
         .sorted { $0.timestamp < $1.timestamp }
@@ -375,6 +382,7 @@ struct OpenWeatherResponse: Codable {
     let wind: Wind
     let rain: Rain?
     let visibility: Int
+    let uvi: Double?
 }
 
 struct Weather: Codable {
@@ -418,6 +426,7 @@ struct ForecastItem: Codable {
     let rain: Rain?
     let visibility: Int
     let pop: Double
+    let uvi: Double?
 }
 
 struct OneCallResponse: Codable {

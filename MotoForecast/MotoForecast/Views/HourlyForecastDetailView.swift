@@ -95,6 +95,14 @@ struct HourlyForecastDetailView: View {
                         value: "\(Int(round(visibility))) mi"
                     )
                 }
+                
+                if let uvIndex = forecast.uvIndex {
+                    WeatherInfoRow(
+                        icon: "sun.max.fill",
+                        title: "UV Index",
+                        value: String(format: "%.1f", uvIndex)
+                    )
+                }
             }
         }
     }

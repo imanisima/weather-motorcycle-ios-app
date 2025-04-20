@@ -14,6 +14,7 @@ struct WeatherData: Codable, Identifiable {
     let timestamp: Date
     var highTemp: Double?
     var lowTemp: Double?
+    var uvIndex: Double?
     
     // Custom initializer for manual creation
     init(
@@ -28,7 +29,8 @@ struct WeatherData: Codable, Identifiable {
         icon: String,
         timestamp: Date,
         highTemp: Double? = nil,
-        lowTemp: Double? = nil
+        lowTemp: Double? = nil,
+        uvIndex: Double? = nil
     ) {
         self.id = id
         self.temperature = temperature
@@ -42,6 +44,7 @@ struct WeatherData: Codable, Identifiable {
         self.timestamp = timestamp
         self.highTemp = highTemp
         self.lowTemp = lowTemp
+        self.uvIndex = uvIndex
     }
     
     // Decoding initializer for JSON parsing
@@ -59,6 +62,7 @@ struct WeatherData: Codable, Identifiable {
         timestamp = try container.decode(Date.self, forKey: .timestamp)
         highTemp = try container.decodeIfPresent(Double.self, forKey: .highTemp)
         lowTemp = try container.decodeIfPresent(Double.self, forKey: .lowTemp)
+        uvIndex = try container.decodeIfPresent(Double.self, forKey: .uvIndex)
     }
 
     
@@ -66,18 +70,26 @@ struct WeatherData: Codable, Identifiable {
         // Calculate riding confidence based on weather conditions
         var score = 100
         
-        // Temperature impact (ideal range: 15-25°C)
-        if temperature < 10 || temperature > 35 {
-            score -= 30
-        } else if temperature < 15 || temperature > 30 {
-            score -= 15
+        // Temperature impact (in Fahrenheit)
+        let tempF = temperature * 9/5 + 32
+        if tempF < 50 {
+            score -= 30  // Cold conditions - risk of frostbite or icy roads
+        } else if tempF < 60 {
+            score -= 15  // Cool conditions
+        } else if tempF > 90 {
+            score -= 25  // Extreme heat - discomfort and dehydration risks
+        } else if tempF > 80 {
+            score -= 10  // Warm conditions
         }
         
-        // Wind impact (threshold: 20 km/h)
-        if windSpeed > 30 {
-            score -= 25
-        } else if windSpeed > 20 {
-            score -= 15
+        // Wind impact (in mph)
+        let windMph = windSpeed * 2.237
+        if windMph > 25 {
+            score -= 25  // Strong gusts - difficult handling
+        } else if windMph > 20 {
+            score -= 15  // Moderate winds
+        } else if windMph > 15 {
+            score -= 5   // Light winds
         }
         
         // Precipitation impact - more granular
@@ -91,13 +103,44 @@ struct WeatherData: Codable, Identifiable {
             score -= 10  // Low chance
         }
         
-        // Visibility impact (threshold: 5km)
+        // Visibility impact (in miles)
         if let visibilityValue = visibility {
-            if visibilityValue < 5 {
-                score -= 20
+            let visibilityMiles = visibilityValue * 0.621371
+            if visibilityMiles < 1 {
+                score -= 30  // Very poor visibility
+            } else if visibilityMiles < 3 {
+                score -= 20  // Poor visibility
+            } else if visibilityMiles < 5 {
+                score -= 10  // Reduced visibility
             }
         } else {
             score -= 10  // Penalize slightly for unknown visibility
+        }
+        
+        // Humidity impact
+        if humidity > 80 {
+            score -= 10  // High humidity reduces comfort
+        }
+        
+        // UV Index impact
+        if let uv = uvIndex {
+            if uv > 10 {
+                score -= 15  // Extreme UV - high risk of sunburn and heat fatigue
+            } else if uv > 7 {
+                score -= 10  // Very high UV
+            } else if uv > 5 {
+                score -= 5   // High UV
+            }
+        }
+        
+        // Thunderstorm detection (based on description)
+        if description.lowercased().contains("thunder") {
+            score -= 50  // Significant drop for thunderstorms
+        }
+        
+        // Road safety warnings (based on temperature and precipitation)
+        if tempF < 32 || (tempF < 40 && precipitation > 30) {
+            score -= 40  // Potential for icy roads
         }
         
         return max(0, min(100, score))

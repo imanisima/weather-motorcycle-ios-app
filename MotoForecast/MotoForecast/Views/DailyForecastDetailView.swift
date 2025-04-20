@@ -16,6 +16,7 @@ struct DailyForecastDetailView: View {
                     temperatureCard
                     conditionsCard
                     ridingConditionsCard
+                    gearRecommendationsCard
                 }
                 .padding()
             }
@@ -95,7 +96,7 @@ struct DailyForecastDetailView: View {
                 WeatherInfoRow(
                     icon: "cloud.rain",
                     title: "Precipitation",
-                    value: "\(Int(round(forecast.precipitation * 100)))%"
+                    value: "\(Int(round(forecast.precipitation)))%"
                 )
                 
                 if let visibility = forecast.visibility {
@@ -103,6 +104,14 @@ struct DailyForecastDetailView: View {
                         icon: "eye",
                         title: "Visibility",
                         value: "\(Int(round(visibility))) mi"
+                    )
+                }
+                
+                if let uvIndex = forecast.uvIndex {
+                    WeatherInfoRow(
+                        icon: "sun.max.fill",
+                        title: "UV Index",
+                        value: String(format: "%.1f", uvIndex)
                     )
                 }
             }
@@ -119,6 +128,41 @@ struct DailyForecastDetailView: View {
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.Colors.secondaryText)
                     .multilineTextAlignment(.center)
+            }
+        }
+    }
+    
+    private var gearRecommendationsCard: some View {
+        WeatherCard(title: "Gear Recommendations") {
+            VStack(spacing: 16) {
+                ForEach(forecast.getRecommendedGear(), id: \.category) { recommendation in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(recommendation.category)
+                            .font(Theme.Typography.headline)
+                            .foregroundStyle(Theme.Colors.primaryText)
+                        
+                        Text(recommendation.reason)
+                            .font(Theme.Typography.footnote)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                        
+                        ForEach(recommendation.items, id: \.self) { item in
+                            HStack(spacing: 8) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(Theme.Colors.accent)
+                                    .font(.system(size: 12))
+                                
+                                Text(item)
+                                    .font(Theme.Typography.body)
+                                    .foregroundStyle(Theme.Colors.primaryText)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 8)
+                    
+                    if recommendation.category != forecast.getRecommendedGear().last?.category {
+                        Divider()
+                    }
+                }
             }
         }
     }
