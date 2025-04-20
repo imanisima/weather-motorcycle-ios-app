@@ -9,6 +9,8 @@ import SwiftUI
 
 @main
 struct MotoForecastApp: App {
+    @StateObject private var weatherMonitoringService = WeatherMonitoringService.shared
+    
     init() {
         // Print environment status on launch
         EnvironmentValidator.printEnvironmentStatus()
@@ -17,6 +19,12 @@ struct MotoForecastApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(weatherMonitoringService)
         }
     }
+}
+
+#Preview {
+    ContentView()
+        .environmentObject(WeatherMonitoringService.shared)
 }
