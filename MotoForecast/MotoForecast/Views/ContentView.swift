@@ -14,12 +14,15 @@ struct ContentView: View {
     
     var body: some View {
         TabView {
-            NavigationView {
-                WeatherView(viewModel: viewModel)
-            }
-            .tabItem {
-                Label("Weather", systemImage: "cloud.sun.fill")
-            }
+            WeatherView(viewModel: viewModel)
+                .tabItem {
+                    Label("Weather", systemImage: "cloud.sun.fill")
+                }
+            
+            SavedPlacesView(viewModel: viewModel)
+                .tabItem {
+                    Label("Saved Places", systemImage: "star.fill")
+                }
             
             NavigationView {
                 SettingsView(viewModel: viewModel)

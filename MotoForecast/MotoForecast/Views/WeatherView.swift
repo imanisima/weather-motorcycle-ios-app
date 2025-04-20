@@ -53,6 +53,7 @@ struct WeatherView: View {
                             }
                         }
                         .padding(Theme.Layout.screenPadding)
+                        .foregroundColor(.black)
                     }
                 }
             }
@@ -244,7 +245,7 @@ struct WeatherView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "drop.fill")
                             .foregroundStyle(.blue)
-                        Text("\(Int(round(forecast.precipitation)))%")
+                        Text("\(viewModel.formatPrecipitation(forecast.precipitation))")
                             .foregroundStyle(.primary)
                     }
                     .font(.caption.weight(.medium))
@@ -636,11 +637,11 @@ struct WeatherView: View {
         if weather.precipitation < 10 {
             points.append("No significant rain expected")
         } else if weather.precipitation < 30 {
-            points.append("Slight chance of rain (\(Int(round(weather.precipitation)))%)")
+            points.append("Slight chance of rain (\(viewModel.formatPrecipitation(weather.precipitation)))")
         } else if weather.precipitation < 50 {
-            points.append("Moderate chance of rain (\(Int(round(weather.precipitation)))%)")
+            points.append("Moderate chance of rain (\(viewModel.formatPrecipitation(weather.precipitation)))")
         } else {
-            points.append("High chance of rain (\(Int(round(weather.precipitation)))%)")
+            points.append("High chance of rain (\(viewModel.formatPrecipitation(weather.precipitation)))")
         }
         
         // Visibility if poor
@@ -709,13 +710,8 @@ struct WeatherView: View {
     }
     
     private func formatDay(_ date: Date) -> String {
-        let calendar = Calendar.current
-        if calendar.isDateInToday(date) {
-            return "Today"
-        }
-        
         let formatter = DateFormatter()
-        formatter.dateFormat = "EEE, MM/dd"  // e.g., "Sun, 04/20"
+        formatter.dateFormat = "EEE, MM/dd"
         return formatter.string(from: date)
     }
     
@@ -749,7 +745,7 @@ struct WeatherView: View {
             
             // Precipitation conditions
             if weather.precipitation > 20 {
-                reasons.append("Chance of rain (\(Int(round(weather.precipitation)))%) - roads may be slippery")
+                reasons.append("Chance of rain (\(viewModel.formatPrecipitation(weather.precipitation)) - roads may be slippery")
             }
             
             // Visibility conditions

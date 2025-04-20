@@ -153,6 +153,11 @@ final class WeatherViewModel: ObservableObject {
         let windSpeed = temperatureUnit == .celsius ? speed * 3.6 : speed * 2.237
         return "\(Int(round(windSpeed))) \(temperatureUnit == .celsius ? "km/h" : "mph")"
     }
+
+    func formatPrecipitation(_ value: Double) -> String {
+        let cappedValue = min(value, 100)  // Cap at 100%
+        return "\(Int(round(cappedValue)))%"
+    }
     
     // MARK: - Private Methods
     private func loadFavorites() async {

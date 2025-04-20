@@ -92,8 +92,12 @@ struct WeatherData: Codable, Identifiable {
         }
         
         // Visibility impact (threshold: 5km)
-        if visibility == nil || visibility! < 5 {
-            score -= 20
+        if let visibilityValue = visibility {
+            if visibilityValue < 5 {
+                score -= 20
+            }
+        } else {
+            score -= 10  // Penalize slightly for unknown visibility
         }
         
         return max(0, min(100, score))
@@ -123,7 +127,7 @@ struct WeatherData: Codable, Identifiable {
         conditions.append(description.capitalized)
         
         // Add temperature context
-        if let high = highTemp, let low = lowTemp {
+        if let high = highTemp {
             if high > 30 {
                 conditions.append("Hot")
             } else if high < 15 {
@@ -187,6 +191,78 @@ struct WeatherData: Codable, Identifiable {
         default:
             return .hazardous
         }
+    }
+    
+    struct GearRecommendation {
+        let category: String
+        let items: [String]
+        let reason: String
+    }
+    
+    func getRecommendedGear() -> [GearRecommendation] {
+        var recommendations: [GearRecommendation] = []
+        
+        // Base layer recommendations
+        if temperature < 15 {  // Below 15°C/59°F
+            recommendations.append(GearRecommendation(
+                category: "Base Layer",
+                items: ["Thermal underwear", "Neck gaiter"],
+                reason: "Cold temperatures require proper insulation"
+            ))
+        }
+        
+        // Jacket recommendations
+        if temperature < 10 {  // Below 10°C/50°F
+            recommendations.append(GearRecommendation(
+                category: "Jacket",
+                items: ["Insulated motorcycle jacket", "Thermal liner"],
+                reason: "Protection against cold weather required"
+            ))
+        } else if precipitation > 30 {
+            recommendations.append(GearRecommendation(
+                category: "Jacket",
+                items: ["Waterproof motorcycle jacket", "Rain liner"],
+                reason: "High chance of rain"
+            ))
+        } else {
+            recommendations.append(GearRecommendation(
+                category: "Jacket",
+                items: ["Ventilated motorcycle jacket"],
+                reason: "Standard protection with good airflow"
+            ))
+        }
+        
+        // Gloves recommendations
+        if temperature < 10 {
+            recommendations.append(GearRecommendation(
+                category: "Gloves",
+                items: ["Insulated waterproof gloves"],
+                reason: "Cold weather protection needed"
+            ))
+        } else if precipitation > 30 {
+            recommendations.append(GearRecommendation(
+                category: "Gloves",
+                items: ["Waterproof gloves"],
+                reason: "Rain protection needed"
+            ))
+        } else {
+            recommendations.append(GearRecommendation(
+                category: "Gloves",
+                items: ["Standard motorcycle gloves"],
+                reason: "Basic protection sufficient"
+            ))
+        }
+        
+        // Visibility gear
+        if let visibilityValue = visibility, visibilityValue < 5 || precipitation > 50 {
+            recommendations.append(GearRecommendation(
+                category: "Visibility",
+                items: ["Reflective vest", "LED light strips"],
+                reason: "Poor visibility conditions"
+            ))
+        }
+        
+        return recommendations
     }
 }
 
