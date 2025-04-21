@@ -432,7 +432,7 @@ struct WeatherView: View {
     
     private func currentRidingStatusView(_ weather: WeatherData) -> some View {
         let rideDetails = getRideDetails()
-
+        
         return VStack(alignment: .leading, spacing: 16) {
             // Current Conditions Section
             VStack(alignment: .leading, spacing: 8) {
@@ -453,9 +453,12 @@ struct WeatherView: View {
                     .font(.subheadline)
                     .foregroundStyle(.primary)
                 
-                Text("• \(Int(weather.precipitation))% chance of precipitation")
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
+                // Display all weather summaries
+                ForEach(getWeatherSummary(), id: \.self) { summary in
+                    Text("• \(summary)")
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                }
                 
                 if let visibility = weather.visibility {
                     Text("• Visibility: \(getVisibilityDescription(visibility))")
@@ -1639,6 +1642,274 @@ struct WeatherView: View {
             .cornerRadius(16)
         }
         .buttonStyle(PlainButtonStyle())
+    }
+
+    private func getRainSummary() -> String {
+        let calendar = Calendar.current
+        let now = Date()
+        let todayEnd = calendar.date(bySettingHour: 23, minute: 59, second: 59, of: now)!
+        
+        // Filter forecasts to only include those for today
+        let todayForecasts = viewModel.hourlyForecast.filter { forecast in
+            forecast.timestamp >= now && forecast.timestamp <= todayEnd
+        }
+        
+        // Find maximum precipitation chance for today
+        let maxPrecipitation = todayForecasts.map { $0.precipitation }.max() ?? 0
+        
+        if maxPrecipitation < 10 {
+            return "No rain expected – clear roads ahead!"
+        } else if maxPrecipitation < 30 {
+            return "Slight chance of light rain – keep an eye out"
+        } else if maxPrecipitation < 60 {
+            return "Rain possible – stay prepared"
+        } else {
+            return "Rain likely – ride with caution"
+        }
+    }
+
+    private func getWeatherSummary() -> [String] {
+        let calendar = Calendar.current
+        let now = Date()
+        let todayEnd = calendar.date(bySettingHour: 23, minute: 59, second: 59, of: now)!
+        
+        // Filter forecasts to only include those for today
+        let todayForecasts = viewModel.hourlyForecast.filter { forecast in
+            forecast.timestamp >= now && forecast.timestamp <= todayEnd
+        }
+        
+        var summaries: [String] = []
+        
+        // Check for rain
+        let maxPrecipitation = todayForecasts.map { $0.precipitation }.max() ?? 0
+        if maxPrecipitation < 10 {
+            summaries.append("No rain expected – clear roads ahead!")
+        } else if maxPrecipitation < 30 {
+            summaries.append("Slight chance of light rain – keep an eye out")
+        } else if maxPrecipitation < 60 {
+            summaries.append("Rain possible – stay prepared")
+        } else {
+            summaries.append("Rain likely – ride with caution")
+        }
+        
+        // Check for thunderstorms
+        let hasThunderstorms = todayForecasts.contains { forecast in
+            forecast.description.lowercased().contains("thunder")
+        }
+        if hasThunderstorms {
+            summaries.append("⚡️ Thunderstorms expected – seek shelter when active")
+        }
+        
+        // Check for snow
+        let hasSnow = todayForecasts.contains { forecast in
+            forecast.description.lowercased().contains("snow")
+        }
+        if hasSnow {
+            summaries.append("❄️ Snow expected – riding not recommended")
+        }
+        
+        // Check for fog or low visibility
+        let hasFog = todayForecasts.contains { forecast in
+            forecast.description.lowercased().contains("fog") ||
+            forecast.description.lowercased().contains("mist") ||
+            (forecast.visibility.map { $0 < 2.0 } ?? false) // Less than 2km visibility
+        }
+        if hasFog {
+            summaries.append("🌫️ Reduced visibility conditions expected")
+        }
+        
+        // Check for strong winds
+        let maxWindSpeed = todayForecasts.map { $0.windSpeed * 2.237 }.max() ?? 0 // Convert to mph
+        if maxWindSpeed >= 25 {
+            summaries.append("💨 Strong winds expected (\(Int(maxWindSpeed)) mph)")
+        }
+        
+        // Check for hail
+        let hasHail = todayForecasts.contains { forecast in
+            forecast.description.lowercased().contains("hail")
+        }
+        if hasHail {
+            summaries.append("🌨️ Hail expected – find cover immediately")
+        }
+        
+        return summaries
+    }
+
+    private func calculateRidingScore(_ forecast: WeatherData) -> Double {
+        var score = 100.0
+        
+        // Temperature impact (in Fahrenheit)
+        let tempF = forecast.temperature * 9/5 + 32
+        let windMph = forecast.windSpeed * 2.237
+        
+        // Calculate wind chill for temperatures below 70°F
+        var effectiveTemp = tempF
+        if tempF < 70 {
+            // Wind chill formula from National Weather Service
+            effectiveTemp = 35.74 + (0.6215 * tempF) - (35.75 * pow(windMph, 0.16)) + (0.4275 * tempF * pow(windMph, 0.16))
+        }
+        
+        // Temperature scoring based on effective temperature (accounting for wind chill)
+        switch effectiveTemp {
+        case 60...85: // Ideal temperature range
+            score += 20
+        case 55..<60, 85...90: // Good but might need light gear / ventilation
+            score += 10
+        case 50..<55: // Cool but comfortable with proper gear
+            score += 5
+        case 45..<50: // Getting chilly - requires proper gear
+            score -= 5
+        case 40..<45: // Cold - needs serious cold weather gear
+            score -= 15
+        case 32..<40: // Very cold - challenging even with gear
+            score -= 30
+        case ..<32: // Below freezing - not recommended
+            score -= 50
+        case 90...95: // Hot but manageable with ventilated gear
+            score -= 15
+        case 95...: // Too hot - risk of overheating
+            score -= 40
+        default:
+            break
+        }
+        
+        // Additional heat index adjustment for high temperatures
+        if tempF > 80 {
+            let relativeHumidity = forecast.humidity
+            // Simplified heat index calculation
+            let heatIndex = -42.379 + (2.04901523 * tempF) + (10.14333127 * relativeHumidity) - 
+                          (0.22475541 * tempF * relativeHumidity) - (6.83783 * pow(10, -3) * tempF * tempF) -
+                          (5.481717 * pow(10, -2) * relativeHumidity * relativeHumidity) +
+                          (1.22874 * pow(10, -3) * tempF * tempF * relativeHumidity) +
+                          (8.5282 * pow(10, -4) * tempF * relativeHumidity * relativeHumidity) -
+                          (1.99 * pow(10, -6) * tempF * tempF * relativeHumidity * relativeHumidity)
+            
+            if heatIndex > 95 {
+                score -= 20 // Additional penalty for high heat index
+            } else if heatIndex > 90 {
+                score -= 10 // Moderate penalty for elevated heat index
+            }
+        }
+        
+        // Wind impact (in mph)
+        switch windMph {
+        case 0..<10: // Light winds
+            score += 10
+        case 10..<15: // Mild winds
+            score += 5
+        case 15..<20: // Moderate winds - exercise caution
+            score -= 10
+        case 20..<25: // Strong winds - challenging
+            score -= 25
+        case 25...: // Very strong winds - dangerous
+            score -= 50
+        default:
+            break
+        }
+        
+        // Precipitation impact
+        switch forecast.precipitation {
+        case 0..<10: // Clear conditions
+            score += 20
+        case 10..<30: // Slight chance
+            score += 5
+        case 30..<50: // Moderate chance
+            score -= 15
+        case 50..<70: // High chance
+            score -= 30
+        case 70...: // Very high chance
+            score -= 50
+        default:
+            break
+        }
+        
+        // Visibility impact (in miles)
+        if let visibility = forecast.visibility {
+            let visibilityMiles = visibility * 0.621371
+            switch visibilityMiles {
+            case 5...: // Excellent visibility
+                score += 15
+            case 3..<5: // Good visibility
+                score += 5
+            case 2..<3: // Moderate visibility
+                score -= 10
+            case 1..<2: // Poor visibility
+                score -= 30
+            case ..<1: // Very poor visibility
+                score -= 50
+            default:
+                break
+            }
+        }
+        
+        // Weather condition penalties
+        let description = forecast.description.lowercased()
+        if description.contains("thunder") {
+            score -= 100 // Thunderstorms are dangerous
+        }
+        if description.contains("snow") || description.contains("sleet") {
+            score -= 100 // Snow/sleet conditions are unsafe
+        }
+        if description.contains("fog") || description.contains("mist") {
+            score -= 25 // Fog/mist reduces visibility
+        }
+        if description.contains("hail") {
+            score -= 100 // Hail is extremely dangerous
+        }
+        
+        // Humidity impact
+        if forecast.humidity > 90 {
+            score -= 20 // Very uncomfortable
+        } else if forecast.humidity > 80 {
+            score -= 10 // Uncomfortable
+        }
+        
+        return max(0, min(100, score))
+    }
+    
+    private func findBestRidingDay() -> WeatherData? {
+        let calendar = Calendar.current
+        let now = Date()
+        let todayStart = calendar.startOfDay(for: now)
+        let weekFromNow = calendar.date(byAdding: .day, value: 7, to: todayStart)!
+        
+        // Group forecasts by day
+        var dailyForecasts: [Date: [WeatherData]] = [:]
+        for forecast in viewModel.dailyForecast {
+            let dayStart = calendar.startOfDay(for: forecast.timestamp)
+            if dayStart >= todayStart && dayStart <= weekFromNow {
+                if dailyForecasts[dayStart] == nil {
+                    dailyForecasts[dayStart] = []
+                }
+                dailyForecasts[dayStart]?.append(forecast)
+            }
+        }
+        
+        // Calculate average score for each day
+        var dayScores: [(day: Date, forecast: WeatherData, score: Double)] = []
+        for (day, forecasts) in dailyForecasts {
+            if let primaryForecast = forecasts.first {
+                let avgScore = forecasts.reduce(0.0) { $0 + calculateRidingScore($1) } / Double(forecasts.count)
+                dayScores.append((day, primaryForecast, avgScore))
+            }
+        }
+        
+        // Sort by score and get the best day
+        dayScores.sort { $0.score > $1.score }
+        
+        // Only return today if it's significantly better than other days
+        if let bestScore = dayScores.first?.score,
+           let todayScore = dayScores.first(where: { calendar.isDate($0.day, inSameDayAs: now) })?.score {
+            if calendar.isDate(dayScores[0].day, inSameDayAs: now) && 
+               (dayScores.count == 1 || bestScore > dayScores[1].score + 15) {
+                return dayScores[0].forecast
+            } else {
+                // Return the best non-today forecast
+                return dayScores.first { !calendar.isDate($0.day, inSameDayAs: now) }?.forecast
+            }
+        }
+        
+        return dayScores.first?.forecast
     }
 }
 

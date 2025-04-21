@@ -70,89 +70,52 @@ struct WeatherData: Codable, Identifiable {
         // Calculate riding confidence based on weather conditions
         var score = 100
         
-        // Weather condition bonus
-        let desc = description.lowercased()
-        if desc.contains("clear") || 
-           desc.contains("few clouds") || 
-           desc.contains("scattered clouds") {
-            score += 10  // Bonus for great visibility conditions
-        }
-        
-        // Temperature impact (in Fahrenheit)
-        let tempF = temperature * 9/5 + 32
-        if tempF < 45 {
-            score -= 30  // Very cold conditions
-        } else if tempF < 60 {
-            score -= 15  // Cold conditions
-        } else if tempF > 90 {
-            score -= 25  // Extreme heat
-        } else if tempF > 70 {
-            score -= 10  // Very warm conditions
-        }
-        // Temperatures between 50-85F are considered good for riding
-        
-        // Wind impact (in mph)
-        let windMph = windSpeed * 2.237
-        if windMph > 25 {
-            score -= 25  // Strong winds
-        } else if windMph > 20 {
-            score -= 15  // Moderate winds
-        } else if windMph > 15 {
-            score -= 5   // Light winds
-        }
-        
-        // Precipitation impact - more lenient
-        if precipitation >= 50 {
-            score -= 40  // High chance of rain
-        } else if precipitation >= 40 {
-            score -= 30  // Moderate to high chance
-        } else if precipitation >= 30 {
-            score -= 20  // Moderate chance
-        } else if precipitation >= 20 {
-            score -= 10  // Low chance
-        }
-        // Precipitation < 20% is considered acceptable
-        
-        // Visibility impact (in miles)
-        if let visibilityValue = visibility {
-            let visibilityMiles = visibilityValue * 0.621371
-            if visibilityMiles < 1 {
-                score -= 30  // Very poor visibility
-            } else if visibilityMiles < 3 {
-                score -= 20  // Poor visibility
-            } else if visibilityMiles < 5 {
-                score -= 10  // Reduced visibility
-            }
-        } else {
-            score -= 10  // Penalize slightly for unknown visibility
-        }
-        
-        // Humidity impact - more lenient
-        if humidity > 90 {
-            score -= 15  // Very uncomfortable
-        } else if humidity > 80 {
-            score -= 5   // Slightly uncomfortable
-        }
-        
-        // UV Index impact - more lenient during daylight hours
-        if let uv = uvIndex {
-            if uv > 11 {
-                score -= 15  // Extreme UV
-            } else if uv > 8 {
-                score -= 10  // Very high UV
-            } else if uv > 5 {
-                score -= 5   // High UV
-            }
-        }
-        
-        // Thunderstorm detection (based on description)
+        // Immediate disqualifiers
         if description.lowercased().contains("thunder") {
-            score -= 50  // Significant drop for thunderstorms
+            return 0  // Unsafe for thunder
         }
         
-        // Road safety warnings (based on temperature and precipitation)
-        if tempF < 32 || (tempF < 40 && precipitation > 30) {
-            score -= 40  // Potential for icy roads
+        // Temperature impact (in Celsius)
+        if temperature < 10 {
+            score -= 60  // Too cold
+        } else if temperature > 40 {
+            score -= 60  // Too hot
+        } else if temperature < 15 {
+            score -= 20  // Cold
+        } else if temperature > 35 {
+            score -= 20  // Hot
+        }
+        
+        // Wind impact (in m/s, 25 mph ≈ 11.2 m/s)
+        if windSpeed > 11.2 {
+            score -= 60  // Too windy
+        } else if windSpeed > 8.9 {  // 20 mph
+            score -= 30  // Very windy
+        } else if windSpeed > 6.7 {  // 15 mph
+            score -= 15  // Moderately windy
+        }
+        
+        // Precipitation impact
+        if precipitation > 80 {
+            score -= 60  // Heavy rain likely
+        } else if precipitation > 50 {
+            score -= 40  // Rain likely
+        } else if precipitation > 30 {
+            score -= 30  // Moderate chance of rain
+        }
+        
+        // Humidity impact
+        if humidity > 80 {
+            score -= 20  // High humidity
+        }
+        
+        // Visibility impact (in km)
+        if let visibility = visibility {
+            if visibility < 2 {
+                score -= 60  // Very poor visibility
+            } else if visibility < 5 {
+                score -= 30  // Poor visibility
+            }
         }
         
         return max(0, min(100, score))  // Ensure score stays between 0 and 100
@@ -222,9 +185,9 @@ struct WeatherData: Codable, Identifiable {
     
     var ridingCondition: RidingCondition {
         switch ridingConfidence {
-        case 55...100:
+        case 70...100:
             return .good
-        case 35..<55:
+        case 40..<70:
             return .moderate
         default:
             return .unsafe
