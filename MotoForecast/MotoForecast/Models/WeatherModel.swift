@@ -82,11 +82,11 @@ struct WeatherData: Codable, Identifiable {
         let tempF = temperature * 9/5 + 32
         if tempF < 45 {
             score -= 30  // Very cold conditions
-        } else if tempF < 50 {
+        } else if tempF < 60 {
             score -= 15  // Cold conditions
-        } else if tempF > 95 {
+        } else if tempF > 90 {
             score -= 25  // Extreme heat
-        } else if tempF > 85 {
+        } else if tempF > 70 {
             score -= 10  // Very warm conditions
         }
         // Temperatures between 50-85F are considered good for riding
